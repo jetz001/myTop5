@@ -56,19 +56,35 @@ app.get("/api/search", async (c) => {
   const ftsSearchTerms = [q, intentResult.did_you_mean].filter(Boolean).join(" ");
   let rawEntities = await searchEntitiesFTS(c.env.TOP5_DB, ftsSearchTerms, intent === "general" ? undefined : intent);
 
-  // Fallback if FTS doesn't find enough, but only if we really need to
-  // If we found some FTS matches and the intent is just "general", we probably shouldn't dilute them with random geo places.
-  const shouldFallback = rawEntities.length === 0 || (rawEntities.length < 5 && intentResult.intent !== "general");
+  // Fallback logic:
+  // - For GEO queries: always call AI because location context matters
+  //   (e.g. "ผัดไทกทม" vs "ผัดไทนนทบุรี" should return different results)
+  // - For other intents: only call AI if FTS doesn't return enough results
+  const isGeo = intentResult.intent === "geo";
+  const shouldFallback = isGeo || rawEntities.length === 0 || (rawEntities.length < 5 && intentResult.intent !== "general");
   
   if (shouldFallback) {
     const aiEntities = await runAIFallback(c.env, q, intent);
     
-    // Merge FTS and AI results
-    const seen = new Set(rawEntities.map(e => e.entity_id));
-    for (const e of aiEntities) {
-      if (!seen.has(e.entity_id)) {
-        rawEntities.push(e);
-        seen.add(e.entity_id);
+    // For geo: AI results take priority (they're location-specific)
+    // For others: merge FTS and AI results
+    if (isGeo) {
+      const seen = new Set(aiEntities.map(e => e.entity_id));
+      // Add FTS results that AI didn't cover (to fill any gaps)
+      for (const e of rawEntities) {
+        if (!seen.has(e.entity_id) && aiEntities.length < 8) {
+          aiEntities.push(e);
+          seen.add(e.entity_id);
+        }
+      }
+      rawEntities = aiEntities;
+    } else {
+      const seen = new Set(rawEntities.map(e => e.entity_id));
+      for (const e of aiEntities) {
+        if (!seen.has(e.entity_id)) {
+          rawEntities.push(e);
+          seen.add(e.entity_id);
+        }
       }
     }
   }
