@@ -8,6 +8,9 @@ ENVIRONMENT = "development"
 GOOGLE_PLACES_API_KEY = ""
 TURNSTILE_SECRET = ""
 
+[triggers]
+crons = ["*/10 * * * *"]
+
 [[d1_databases]]
 binding = "TOP5_DB"
 database_name = "top5-db-prod"

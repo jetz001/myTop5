@@ -16,6 +16,7 @@ import { fetchPopcultureEntities } from "./pipelines/popculture";
 import { fetchAcademicEntities } from "./pipelines/academic";
 import { isSocialBot, rewriteOgMeta } from "./og";
 import { runAIFallback } from "./pipelines/ai_fallback";
+import { runCronSeeder } from "./pipelines/cron_seeder";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -209,4 +210,9 @@ async function hashIdentifier(input: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
 }
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runCronSeeder(env));
+  },
+};

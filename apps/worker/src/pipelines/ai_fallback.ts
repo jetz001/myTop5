@@ -98,7 +98,7 @@ Each object must match this exact structure:
   }
 }
 
-async function saveToDatabase(db: D1Database, entities: Entity[]) {
+export async function saveToDatabase(db: D1Database, entities: Entity[]) {
   if (entities.length === 0) return;
   
   const stmt = db.prepare(
