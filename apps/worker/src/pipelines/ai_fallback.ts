@@ -16,10 +16,12 @@ export async function runAIFallback(
       : `Based on your own knowledge,`;
 
     const prompt = `
-You are a helpful data extraction AI for a "Top 5" search engine.
+You are a highly intelligent "Top 5" search engine AI.
 The user searched for: "${query}"
 
-${contextInstruction} extract the top 5 entities (e.g. places, items, coins, people) that best answer the search query. 
+${contextInstruction} your task is to provide the Top 5 actual, specific real-world answers or entities that best match the query. 
+For example, if the query is a food in a specific location, provide the names of the top 5 actual restaurants. If it's a general topic, provide the top 5 specific examples.
+DO NOT break the query down into generic words (e.g., do not return "food" or the location name as an entity). Provide specific names.
 **CRITICAL: You MUST answer in the THAI language (ภาษาไทย) for all fields!**
 Return ONLY a valid JSON array of exactly 5 objects (or less if not found). Do not include any markdown formatting like \`\`\`json.
 Each object must match this exact structure:
