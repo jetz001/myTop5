@@ -65,12 +65,12 @@ export async function renderResultsPage(
   let result: SearchResult | null = null;
   try {
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("timeout")), 8000)
+      setTimeout(() => reject(new Error("timeout")), 40000)
     );
     result = await Promise.race([search(query, coords), timeout]);
   } catch (err) {
     const msg = (err as Error).message === "timeout"
-      ? "Worker ตอบช้าเกินไป ลองรีเฟรชหน้าใหม่"
+      ? "AI กำลังคิดนานเกินไป ลองกดค้นหาซ้ำอีกครั้ง (ข้อมูลอาจถูกสร้างเสร็จแล้ว)"
       : "เชื่อมต่อ Worker ไม่ได้ — ตรวจสอบว่า `wrangler dev` กำลังรันอยู่";
     showError(body, msg);
     return;

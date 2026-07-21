@@ -106,6 +106,7 @@ app.post("/api/vote", async (c) => {
   const { entity_id, query } = body;
 
   if (!entity_id) return c.json({ error: "entity_id required" }, 400);
+  if (entity_id.startsWith("error_")) return c.json({ success: false, message: "ไม่สามารถโหวตให้ข้อผิดพลาดได้" } as VoteResult);
 
   // IP-based spam guard (hash the IP)
   const ip   = c.req.header("CF-Connecting-IP") ?? c.req.header("x-forwarded-for") ?? "unknown";

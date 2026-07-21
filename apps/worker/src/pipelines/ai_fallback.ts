@@ -36,8 +36,8 @@ Each object must match this exact structure:
 }
     `;
 
-    // 3. Call Cloudflare Workers AI
-    const aiResponse = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
+    // 3. Call Cloudflare Workers AI (Using available Llama 3.1 FP8 model)
+    const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
       prompt,
       max_tokens: 800
     });
