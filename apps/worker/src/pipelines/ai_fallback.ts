@@ -23,7 +23,7 @@ ${contextInstruction} your task is to provide the Top 5 actual, specific real-wo
 For example, if the query is a food in a specific location, provide the names of the top 5 actual restaurants. If it's a general topic, provide the top 5 specific examples.
 DO NOT break the query down into generic words (e.g., do not return "food" or the location name as an entity). Provide specific names.
 **CRITICAL: You MUST answer in the THAI language (ภาษาไทย) for all fields!**
-Return ONLY a valid JSON array of exactly 5 objects (or less if not found). Do not include any markdown formatting like \`\`\`json.
+Return ONLY a valid JSON array of exactly **8 objects** (no more, no less). Provide 8 different specific options so users have a diverse ranking pool. Do not include any markdown formatting like \`\`\`json.
 Each object must match this exact structure:
 {
   "entity_name": "ชื่อของสิ่งนั้น (ภาษาไทย หรือ อังกฤษถ้าเป็นชื่อเฉพาะ, max 30 chars)",
@@ -52,7 +52,9 @@ Each object must match this exact structure:
           model: "llama-3.3-70b-versatile",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 3000,
-          temperature: 0.7
+          temperature: 0.8,
+          // Request more items so challenger pool is never empty
+          n: 1
         })
       });
 
@@ -126,8 +128,12 @@ Each object must match this exact structure:
       }
     }));
 
-    // 6. Save to D1 Database asynchronously (don't block the return)
-    saveToDatabase(env.TOP5_DB, newEntities).catch(e => console.error("Failed to save AI entities:", e));
+    // 6. Save to D1 Database synchronously so entities exist before user votes
+    try {
+      await saveToDatabase(env.TOP5_DB, newEntities);
+    } catch (dbErr) {
+      console.error("Failed to save AI entities:", dbErr);
+    }
 
     return newEntities;
 
@@ -152,7 +158,7 @@ export async function saveToDatabase(db: D1Database, entities: Entity[]) {
   if (entities.length === 0) return;
   
   const stmt = db.prepare(
-    `INSERT INTO entities (entity_id, entity_name, category, description, image_url, global_score, w5h) 
+    `INSERT OR REPLACE INTO entities (entity_id, entity_name, category, description, image_url, global_score, w5h) 
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
   
