@@ -41,23 +41,8 @@ export function renderSearchPage(
   // ── Search bar ─────────────────────────────────────────────
   const searchBar = createSearchBar({ onSearch });
 
-  // ── Category Quick-picks ───────────────────────────────────
-  const quickPicks = document.createElement("div");
-  quickPicks.className = "quick-picks";
-  quickPicks.innerHTML = `<div class="quick-picks-label">ลองค้นหา</div>
-    <div class="quick-picks-row">
-      ${CATEGORY_DEMOS.map((c) =>
-        `<button class="quick-chip quick-chip--${c.cls}" data-q="${c.query}">${c.label}</button>`
-      ).join("")}
-    </div>
-  `;
-  quickPicks.querySelectorAll<HTMLButtonElement>(".quick-chip").forEach((btn) => {
-    btn.addEventListener("click", () => onSearch(btn.dataset.q!));
-  });
-
   page.appendChild(logoWrap);
   page.appendChild(searchBar);
-  page.appendChild(quickPicks);
 
   // ── Trending (async) ───────────────────────────────────────
   const trendingSlot = document.createElement("div");
