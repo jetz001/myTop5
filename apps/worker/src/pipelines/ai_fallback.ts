@@ -16,25 +16,43 @@ export async function runAIFallback(
       : `Based on your own knowledge,`;
 
     const prompt = `
-You are a highly intelligent "Top 5" search engine AI.
-The user searched for: "${query}"
+## บริบทของแพลตฟอร์ม (Platform Context)
+คุณเป็น AI ผู้ช่วยของเว็บไซต์ชื่อ **"Top5"** — แพลตฟอร์มจัดอันดับแบบ Real-time ที่คนไทยใช้ค้นหาและโหวตเลือก "5 อันดับที่ดีที่สุด" ในทุกหัวข้อ
 
-${contextInstruction} your task is to provide the Top 5 actual, specific real-world answers or entities that best match the query. 
-For example, if the query is a food in a specific location, provide the names of the top 5 actual restaurants. If it's a general topic, provide the top 5 specific examples.
-DO NOT break the query down into generic words (e.g., do not return "food" or the location name as an entity). Provide specific names.
-**CRITICAL: You MUST answer in the THAI language (ภาษาไทย) for all fields!**
-Return ONLY a valid JSON array of exactly **8 objects** (no more, no less). Provide 8 different specific options so users have a diverse ranking pool. Do not include any markdown formatting like \`\`\`json.
-Each object must match this exact structure:
+**วิธีทำงานของ Top5:**
+- ผู้ใช้พิมพ์คำค้นหาอะไรก็ได้ เช่น "ร้านกะเพราอร่อยๆ แถวอโศก", "เหรียญคริปโต 2024", "นักพัฒนา Python มือโปร", "ดารานักร้องยอดนิยม"
+- ระบบแสดงผล **Top 5 อันดับ** พร้อม Challenger Pool (อันดับ 6-8 ที่รอแชลเลนจ์)
+- ผู้ใช้สามารถ **โหวต (Upvote)** ให้รายการที่ชอบ เพื่อเลื่อนอันดับขึ้นได้จริง
+- คะแนนคำนวณจาก Global Score + Community Upvotes + Time Decay (คะแนนเก่าค่อยๆ ลดลงเพื่อให้ระบบสดใหม่)
+- แต่ละรายการมีข้อมูล **5W1H** (Who, What, Where, When, Why) เพื่อให้ผู้ใช้เข้าใจบริบทของสิ่งนั้น
+
+**ผู้ใช้หลักของเรา:** คนไทย ชอบข้อมูลที่ชัดเจน กระชับ สนุก และมีประโยชน์จริง
+
+---
+## ภารกิจของคุณ
+ผู้ใช้ค้นหาว่า: **"${query}"**
+
+${contextInstruction} จงสร้างรายการ Top 8 ที่ดีที่สุดสำหรับคำค้นหานี้ เพื่อนำไปแสดงบนแพลตฟอร์ม Top5
+
+**กฎสำคัญ:**
+1. ตอบเป็น **ภาษาไทย** ทุก field (ยกเว้นชื่อเฉพาะภาษาอังกฤษ เช่น Bitcoin, Python)
+2. ให้ชื่อ **เฉพาะเจาะจง** ของจริง — ห้ามตอบคำกว้างๆ เช่น "ร้านอาหาร" หรือ "จังหวัด"
+3. ถ้าเป็นร้านอาหาร/สถานที่ → ให้ชื่อร้านจริงๆ, ถ้าเป็นเทคโนโลยี → ให้ชื่อเทคโนโลยีจริงๆ
+4. description ต้องบอกว่า **ทำไมถึงติด Top 5** ให้ผู้ใช้อยากโหวต
+5. w5h ต้องมีข้อมูลที่เป็นประโยชน์และน่าสนใจ ไม่ใช่แค่ copy entity_name
+6. ส่งกลับเป็น **JSON array เท่านั้น** ห้ามมีข้อความอื่น ห้าม markdown
+
+Return ONLY a valid JSON array of exactly 8 objects. Each object:
 {
-  "entity_name": "ชื่อของสิ่งนั้น (ภาษาไทย หรือ อังกฤษถ้าเป็นชื่อเฉพาะ, max 30 chars)",
-  "description": "คำอธิบายสั้นๆ ว่าทำไมถึงติด Top 5 (ภาษาไทย, max 150 chars)",
+  "entity_name": "ชื่อเฉพาะเจาะจง (max 40 chars)",
+  "description": "ทำไมถึงติดอันดับ และดีอย่างไร (ภาษาไทย, max 150 chars)",
   "category": "${categoryHint}",
   "w5h": {
-    "who": "ใครเกี่ยวข้อง หรือใครสร้างสิ่งนี้? (ภาษาไทย)",
-    "what": "สิ่งนี้คืออะไรกันแน่? (ภาษาไทย)",
-    "where": "อยู่ที่ไหน หรือใช้ที่ไหน? (ภาษาไทย)",
-    "when": "สร้างขึ้นเมื่อไหร่ หรือเป็นที่นิยมตอนไหน? (ภาษาไทย)",
-    "why": "ทำไมถึงสำคัญ หรือทำไมถึงติดอันดับ? (ภาษาไทย)"
+    "who": "ใครสร้าง/ใครเกี่ยวข้อง?",
+    "what": "คืออะไร? มีจุดเด่นอะไร?",
+    "where": "อยู่ที่ไหน / ใช้ที่ไหน?",
+    "when": "เมื่อไหร่ที่เป็นที่นิยม?",
+    "why": "ทำไมถึงสำคัญ / ทำไมต้องเลือก?"
   }
 }
     `;
