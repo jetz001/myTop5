@@ -20,18 +20,19 @@ You are a helpful data extraction AI for a "Top 5" search engine.
 The user searched for: "${query}"
 
 ${contextInstruction} extract the top 5 entities (e.g. places, items, coins, people) that best answer the search query. 
+**CRITICAL: You MUST answer in the THAI language (ภาษาไทย) for all fields!**
 Return ONLY a valid JSON array of exactly 5 objects (or less if not found). Do not include any markdown formatting like \`\`\`json.
 Each object must match this exact structure:
 {
-  "entity_name": "Name of the entity (max 30 chars)",
-  "description": "Short explanation of why it is in the top 5 (max 150 chars)",
+  "entity_name": "ชื่อของสิ่งนั้น (ภาษาไทย หรือ อังกฤษถ้าเป็นชื่อเฉพาะ, max 30 chars)",
+  "description": "คำอธิบายสั้นๆ ว่าทำไมถึงติด Top 5 (ภาษาไทย, max 150 chars)",
   "category": "${categoryHint}",
   "w5h": {
-    "who": "Who is involved or who created this?",
-    "what": "What exactly is this?",
-    "where": "Where is it located or where is it used?",
-    "when": "When was it created or when is it relevant?",
-    "why": "Why is it important or why is it in the top 5?"
+    "who": "ใครเกี่ยวข้อง หรือใครสร้างสิ่งนี้? (ภาษาไทย)",
+    "what": "สิ่งนี้คืออะไรกันแน่? (ภาษาไทย)",
+    "where": "อยู่ที่ไหน หรือใช้ที่ไหน? (ภาษาไทย)",
+    "when": "สร้างขึ้นเมื่อไหร่ หรือเป็นที่นิยมตอนไหน? (ภาษาไทย)",
+    "why": "ทำไมถึงสำคัญ หรือทำไมถึงติดอันดับ? (ภาษาไทย)"
   }
 }
     `;
@@ -68,7 +69,7 @@ Each object must match this exact structure:
       community_score: 0,
       total_score: 50 - index * 5,
       upvotes: 0,
-      image_url: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&q=80", // generic AI chip image
+      image_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.entity_name || query)}&background=random&color=fff&size=400`, // Dynamic image
       w5h: item.w5h,
       extra: {
         ai_generated: true
