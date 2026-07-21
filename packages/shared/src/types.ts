@@ -23,6 +23,13 @@ export interface Entity {
   total_score: number;      // final hybrid score with decay
   upvotes: number;
   // Metadata
+  w5h?: {
+    who?: string;
+    what?: string;
+    where?: string;
+    when?: string;
+    why?: string;
+  };
   extra?: Record<string, string | number | boolean>;
   last_voted_at?: string;
 }
@@ -102,10 +109,11 @@ export interface SSEEvent {
 }
 
 export interface Env {
-  TOP5_DB: D1Database;
-  CACHE_KV: KVNamespace;
-  IMAGES: R2Bucket;
+  TOP5_DB: any;
+  CACHE_KV: any;
+  IMAGES: any;
   GOOGLE_PLACES_API_KEY: string;
   TURNSTILE_SECRET: string;
   ENVIRONMENT: string;
+  AI: any;
 }

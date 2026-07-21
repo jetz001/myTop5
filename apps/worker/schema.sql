@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS entities (
     global_score   REAL DEFAULT 0,          -- 0-100 from external APIs
     -- Community
     upvotes        INTEGER DEFAULT 0,
+    -- Metadata
+    w5h            TEXT,                    -- JSON string for Who, What, Where, When, Why
     -- Timestamps
     created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_voted_at  DATETIME DEFAULT CURRENT_TIMESTAMP

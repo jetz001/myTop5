@@ -10,17 +10,20 @@ TURNSTILE_SECRET = ""
 
 [[d1_databases]]
 binding = "TOP5_DB"
-database_name = "top5-db"
-database_id = "local"
+database_name = "top5-db-prod"
+database_id = "84d10342-f614-475c-bc45-e9b9889fb657"
 
 [[kv_namespaces]]
 binding = "CACHE_KV"
-id = "local"
+id = "8f42998ce14f4ae880407cfe23dde0b1"
 
 [[r2_buckets]]
 binding = "IMAGES"
-bucket_name = "top5-images"
+bucket_name = "top5-images-prod"
 
 [dev]
 port = 8787
 local_protocol = "http"
+
+[ai]
+binding = "AI"

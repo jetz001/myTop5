@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { SearchResult, VoteResult, TrendingQuery } from "@top5/shared";
 
-const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.your-subdomain.workers.dev";
+const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.jimwar02.workers.dev";
 
 export async function search(
   query: string,

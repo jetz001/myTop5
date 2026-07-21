@@ -15,6 +15,7 @@ import { fetchDevEntities } from "./pipelines/dev";
 import { fetchPopcultureEntities } from "./pipelines/popculture";
 import { fetchAcademicEntities } from "./pipelines/academic";
 import { isSocialBot, rewriteOgMeta } from "./og";
+import { runAIFallback } from "./pipelines/ai_fallback";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -59,30 +60,11 @@ app.get("/api/search", async (c) => {
   const shouldFallback = rawEntities.length === 0 || (rawEntities.length < 5 && intentResult.intent !== "general");
   
   if (shouldFallback) {
-    let fallbackEntities: any[] = [];
-    switch (intent) {
-      case "geo":
-        fallbackEntities = await fetchGeoEntities(c.env.TOP5_DB, q, coords);
-        break;
-      case "web3":
-        fallbackEntities = await fetchWeb3Entities(c.env.TOP5_DB);
-        break;
-      case "dev":
-        fallbackEntities = await fetchDevEntities(c.env.TOP5_DB);
-        break;
-      case "popculture":
-        fallbackEntities = await fetchPopcultureEntities(c.env.TOP5_DB);
-        break;
-      case "academic":
-        fallbackEntities = await fetchAcademicEntities(c.env.TOP5_DB);
-        break;
-      default:
-        fallbackEntities = await fetchGeoEntities(c.env.TOP5_DB, q, coords);
-    }
+    const aiEntities = await runAIFallback(c.env, q, intent);
     
-    // Merge and deduplicate
+    // Merge FTS and AI results
     const seen = new Set(rawEntities.map(e => e.entity_id));
-    for (const e of fallbackEntities) {
+    for (const e of aiEntities) {
       if (!seen.has(e.entity_id)) {
         rawEntities.push(e);
         seen.add(e.entity_id);
@@ -142,26 +124,8 @@ app.post("/api/vote", async (c) => {
   const ftsSearchTerms = [query, intentResult.did_you_mean].filter(Boolean).join(" ");
   let rawEntities = await searchEntitiesFTS(c.env.TOP5_DB, ftsSearchTerms, intentResult.intent === "general" ? undefined : intentResult.intent);
 
-  // Fallback
-  if (rawEntities.length < 3) {
-    let fallbackEntities: any[] = [];
-    switch (intentResult.intent) {
-      case "geo":        fallbackEntities = await fetchGeoEntities(c.env.TOP5_DB, query); break;
-      case "web3":       fallbackEntities = await fetchWeb3Entities(c.env.TOP5_DB); break;
-      case "dev":        fallbackEntities = await fetchDevEntities(c.env.TOP5_DB); break;
-      case "popculture": fallbackEntities = await fetchPopcultureEntities(c.env.TOP5_DB); break;
-      case "academic":   fallbackEntities = await fetchAcademicEntities(c.env.TOP5_DB); break;
-      default:           fallbackEntities = await fetchGeoEntities(c.env.TOP5_DB, query);
-    }
-    const seen = new Set(rawEntities.map(e => e.entity_id));
-    for (const e of fallbackEntities) {
-      if (!seen.has(e.entity_id)) {
-        rawEntities.push(e);
-        seen.add(e.entity_id);
-      }
-    }
-  }
-
+  // Fallback shouldn't be needed here because AI already saved entities during /api/search
+  // We just rank whatever FTS finds.
   const { top5, challenger_pool } = rankEntities(rawEntities);
   const swapResult = checkChallengerSwap(top5, challenger_pool);
 

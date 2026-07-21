@@ -235,6 +235,10 @@ function buildChallengerSection(pool: RankedEntity[]): HTMLElement {
 // ─────────────────────────────────────────────────────────────
 function showSkeleton(body: HTMLElement): void {
   body.innerHTML = `
+    <div class="skeleton-header-ai">
+      <div class="ai-spinner">🤖</div>
+      <span>กำลังค้นหาข้อมูลและใช้ AI วิเคราะห์จากทั่วโลก...</span>
+    </div>
     <div class="results-meta">
       <div class="skeleton" style="width:220px;height:22px;border-radius:99px;"></div>
       <div class="skeleton" style="width:80px;height:22px;border-radius:99px;"></div>
