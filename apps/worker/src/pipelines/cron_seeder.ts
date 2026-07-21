@@ -3,19 +3,25 @@ import { Entity } from "@top5/shared";
 import { saveToDatabase } from "./ai_fallback";
 import { Env } from "../index";
 
-// List of popular Thai keywords to seed
-const SEED_KEYWORDS = [
-  "อาหารไทย", "สถานที่ท่องเที่ยว", "ดารา", "ภาพยนตร์", "เพลง",
-  "บริษัทเทคโนโลยี", "มหาวิทยาลัย", "ภาษาโปรแกรม", "รถยนต์", "สมาร์ทโฟน",
-  "คริปโตเคอร์เรนซี", "แบรนด์แฟชั่น", "เครื่องใช้ไฟฟ้า", "แอปพลิเคชัน", "เกมออนไลน์",
-  "ศิลปิน", "นักกีฬา", "เครื่องดื่ม", "สัตว์เลี้ยง", "ช่องยูทูป",
-  "หมูกรอบ", "หมูกระทะ", "ขนมไทย", "ตลาดกลางคืน", "ซีรีส์เกาหลี"
-];
+// Categories for random distribution
+const CATEGORIES = ["อาหาร", "สถานที่", "เทคโนโลยี", "บุคคลดัง", "เกม", "เพลง", "ภาพยนตร์", "วิทยาศาสตร์", "แบรนด์", "สัตว์", "ยานพาหนะ", "แอปพลิเคชัน", "กีฬา", "แฟชั่น", "ธุรกิจ", "การศึกษา"];
+const ALPHABETS = "ABCDEFGHIJKLMNOPQRSTUVWXYZกขคฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮ".split("");
 
 export async function runCronSeeder(env: Env) {
   try {
-    // Pick a random keyword
-    const randomKeyword = SEED_KEYWORDS[Math.floor(Math.random() * SEED_KEYWORDS.length)];
+    // Get current iteration index from KV
+    const indexStr = await env.CACHE_KV.get("cron_index");
+    let currentIndex = parseInt(indexStr || "0", 10);
+    if (isNaN(currentIndex)) currentIndex = 0;
+
+    // Generate a diverse topic using sequential alphabet
+    const randomCat = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+    const randomChar = ALPHABETS[currentIndex % ALPHABETS.length];
+    
+    // Increment and save index for next run
+    await env.CACHE_KV.put("cron_index", (currentIndex + 1).toString());
+
+    const randomKeyword = `หมวดหมู่ ${randomCat} ที่ขึ้นต้นด้วยตัวอักษร ${randomChar}`;
     console.log(`[Cron] Seeding keyword: ${randomKeyword}`);
 
     // Call Groq API (fast external Llama-3.3-70b)
