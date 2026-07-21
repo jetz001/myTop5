@@ -1,0 +1,20 @@
+{
+  "name": "@top5/worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute top5-db --local --file=schema.sql",
+    "db:seed": "wrangler d1 execute top5-db --local --file=seed.sql"
+  },
+  "dependencies": {
+    "@top5/shared": "*",
+    "hono": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240718.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.63.1"
+  }
+}

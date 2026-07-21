@@ -1,0 +1,26 @@
+name = "top5-worker"
+main = "apps/worker/src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "development"
+GOOGLE_PLACES_API_KEY = ""
+TURNSTILE_SECRET = ""
+
+[[d1_databases]]
+binding = "TOP5_DB"
+database_name = "top5-db"
+database_id = "local"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "local"
+
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "top5-images"
+
+[dev]
+port = 8787
+local_protocol = "http"

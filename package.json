@@ -1,0 +1,21 @@
+{
+  "name": "top5",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:worker\" \"npm run dev:frontend\"",
+    "dev:worker": "npm run dev --workspace=apps/worker",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "build": "npm run build --workspace=apps/frontend",
+    "typecheck": "tsc --noEmit --project packages/shared/tsconfig.json && tsc --noEmit --project apps/worker/tsconfig.json && tsc --noEmit --project apps/frontend/tsconfig.json",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.4.5"
+  }
+}
