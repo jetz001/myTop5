@@ -37,13 +37,37 @@ Each object must match this exact structure:
 }
     `;
 
-    // 3. Call Cloudflare Workers AI (Using available Llama 3.1 FP8 model)
-    const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
-      prompt,
-      max_tokens: 800
-    });
+    // 3. Try Groq API First (Fast and Reliable Llama 3.3 70B)
+    let responseText = "";
+    try {
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 3000,
+          temperature: 0.7
+        })
+      });
 
-    const responseText = aiResponse.response;
+      if (!groqRes.ok) throw new Error(`Groq API Error: ${groqRes.statusText}`);
+      
+      const data: any = await groqRes.json();
+      responseText = data.choices?.[0]?.message?.content || "";
+    } catch (groqErr) {
+      console.warn("Groq API Failed, falling back to Cloudflare AI:", groqErr);
+      
+      // 3.1 Fallback to Cloudflare Workers AI
+      const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
+        prompt,
+        max_tokens: 2048
+      });
+      responseText = aiResponse.response;
+    }
     
     // 4. Parse the JSON (extract array robustly)
     const arrayStart = responseText.indexOf('[');
