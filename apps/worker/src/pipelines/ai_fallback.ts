@@ -72,8 +72,9 @@ export async function runAIFallback(
       ? `Here is the latest information from the web:\n---\n${webContext}\n---\nBased on the web information above,`
       : `Based on your own knowledge,`;
 
-    const prompt = `You are Top5 AI. User searched: "${query}".
-Return ONLY a valid JSON array of 8 REAL, FAMOUS, HUGELY POPULAR specific entities (people, places, things, brands, etc.) for this query. Do NOT invent fake names. Use real and well-known entities.
+    const prompt = `You are Top5 AI. User searched for the topic: "${query}".
+Generate a list of the 8 most famous, popular, or best EXAMPLES / INSTANCES that fall under this specific topic. (For example, if they search "gun", return actual famous gun models like AK-47, M16. If they search "dog", return dog breeds.)
+Return ONLY a valid JSON array of 8 REAL, specific entities. Do NOT invent fake names.
 Format MUST be a valid JSON array of 8 objects:
 [
   {
