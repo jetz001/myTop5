@@ -6,43 +6,56 @@ import { generateEntityId } from "../utils/slug";
 function parseAIJsonArray(text: string): any[] {
   if (!text) return [];
   
-  // 1. Extract substring between first '[' and last ']'
+  // 1. First attempt: Standard JSON.parse on full array [ ... ]
   const start = text.indexOf('[');
   const end = text.lastIndexOf(']');
   if (start !== -1 && end !== -1 && end > start) {
     let jsonStr = text.substring(start, end + 1);
-    // Clean trailing commas and control characters
     jsonStr = jsonStr
       .replace(/,\s*([\]}])/g, "$1")
       .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
 
     try {
       const data = JSON.parse(jsonStr);
-      if (Array.isArray(data)) return data;
-    } catch {
-      // Relaxed attempt
+      if (Array.isArray(data) && data.length > 0) return data;
+    } catch (e) {
+      console.warn("Full array parse failed, attempting stack-based object extraction:", e);
     }
   }
 
-  // Fallback: extract individual JSON objects using regex
+  // 2. Second attempt: Stack-based nested JSON object extraction (handles nested w5h objects)
   const results: any[] = [];
-  const objMatches = text.match(/\{[^{}]*\}/g) || [];
-  for (const rawObj of objMatches) {
-    try {
-      const cleaned = rawObj
-        .replace(/,\s*}/g, "}")
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
-      const item = JSON.parse(cleaned);
-      if (item && (item.entity_name || item.name)) {
-        results.push(item);
+  let depth = 0;
+  let objStart = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        const rawObj = text.substring(objStart, i + 1);
+        try {
+          const cleaned = rawObj
+            .replace(/,\s*}/g, "}")
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+          const item = JSON.parse(cleaned);
+          if (item && (item.entity_name || item.name)) {
+            results.push(item);
+          }
+        } catch {
+          // ignore broken item
+        }
+        objStart = -1;
       }
-    } catch {
-      // ignore
     }
   }
 
   return results;
 }
+
 
 export async function runAIFallback(
   env: any,
