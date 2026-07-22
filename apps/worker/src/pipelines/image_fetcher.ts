@@ -31,7 +31,7 @@ async function fetchWikiThumbnail(name: string): Promise<string | null> {
 
       const data = (await res.json()) as WikiSummary;
       if (data.thumbnail?.source) {
-        return data.thumbnail.source.replace(/\/\d+px-/, `/${WIKI_THUMB_SIZE}px-`);
+        return data.thumbnail.source; // Use valid Wikipedia thumbnail URL directly
       }
     } catch {
       // ignore
@@ -107,7 +107,10 @@ export async function fetchAndCacheImage(
 
   // 5. Download image and save to R2
   try {
-    const imgRes = await fetch(thumbUrl, { signal: AbortSignal.timeout(6000) });
+    const imgRes = await fetch(thumbUrl, {
+      headers: { "User-Agent": "Top5App/1.0 (https://top5-28n.pages.dev)" },
+      signal: AbortSignal.timeout(6000)
+    });
     if (!imgRes.ok) return null;
 
     const buffer = await imgRes.arrayBuffer();
