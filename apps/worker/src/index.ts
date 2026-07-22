@@ -156,7 +156,7 @@ app.get("/api/search", async (c) => {
 app.get("/images/:entityId", async (c) => {
   const entityId = c.req.param("entityId");
   const name = c.req.query("name");
-  return serveImage(c.env, entityId, name);
+  return serveImage(c.env, entityId, name, c.executionCtx);
 });
 
 // ──────────────────────────────────────────────────────────────

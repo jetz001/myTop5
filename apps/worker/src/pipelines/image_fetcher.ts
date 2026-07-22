@@ -130,7 +130,8 @@ export async function fetchAndCacheImage(
 export async function serveImage(
   env: { IMAGES: R2Bucket },
   entityId: string,
-  fallbackName?: string
+  fallbackName?: string,
+  ctx?: ExecutionContext
 ): Promise<Response> {
   const obj = await env.IMAGES.get(`thumbs/${entityId}`);
 
@@ -140,6 +141,12 @@ export async function serveImage(
     headers.set("Cache-Control", "public, max-age=604800");
     headers.set("ETag", obj.etag);
     return new Response(obj.body, { headers });
+  }
+
+  // Trigger auto background image fetch to populate R2
+  if (fallbackName && ctx) {
+    const p = fetchAndCacheImage(env, entityId, fallbackName, fallbackName).catch(() => {});
+    ctx.waitUntil(p);
   }
 
   // Fallback: 302 redirect with no-cache headers so browser rechecks when R2 gets image
