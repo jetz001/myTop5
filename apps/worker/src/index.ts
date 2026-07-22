@@ -84,9 +84,10 @@ app.get("/api/search", async (c) => {
   );
 
   // ── DB-first, AI-last rule ─────────────────────────────────
-  // If DB already has >= 5 matching entities, NEVER call AI or external APIs.
-  // AI / external APIs are strictly used as fallback when DB has < 5 items.
-  const shouldFallback = isGeo ? rawEntities.length === 0 : rawEntities.length < 5;
+  // If we have NEVER searched for this exact query before (hasBeenSearchedBefore = false),
+  // we MUST fallback to AI/API to generate a dedicated Top 5 list for it.
+  // Otherwise, if we have searched for it, we only fallback if we have < 5 items.
+  const shouldFallback = isGeo ? rawEntities.length === 0 : (!hasBeenSearchedBefore || rawEntities.length < 5);
 
   if (shouldFallback) {
     let apiEntities: typeof rawEntities = [];
