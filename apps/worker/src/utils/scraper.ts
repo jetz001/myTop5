@@ -3,7 +3,8 @@ export async function scrapeWeb(query: string): Promise<string> {
     const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-      }
+      },
+      signal: AbortSignal.timeout(3000), // 3s max — don't block AI for a slow scrape
     });
     
     if (!res.ok) {

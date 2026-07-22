@@ -85,18 +85,21 @@ export async function fetchAndSaveAnimeEntities(
       }),
     };
 
-    // Save to DB (INSERT OR REPLACE)
+    // Save to DB first (fast)
     await saveToDatabase(env.TOP5_DB, [entity]);
 
-    // Fetch + cache image in R2 (Wikipedia thumbnail)
-    const imageUrl = await fetchAndCacheImage(env, entityId, titleTh, titleEn);
-    if (imageUrl) {
-      entity.image_url = imageUrl;
-      await env.TOP5_DB
-        .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
-        .bind(imageUrl, entityId)
-        .run();
-    }
+    // Fetch + cache image in background (non-blocking)
+    fetchAndCacheImage(env, entityId, titleTh, titleEn)
+      .then((imageUrl) => {
+        if (imageUrl) {
+          env.TOP5_DB
+            .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
+            .bind(imageUrl, entityId)
+            .run()
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
 
     entities.push(entity);
   }
