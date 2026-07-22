@@ -233,32 +233,53 @@ app.get("/api/sse", async (c) => {
   const writer = writable.getWriter();
   const encoder = new TextEncoder();
 
+  let isClosed = false;
+
   const send = (data: object) => {
-    writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    if (isClosed) return;
+    try {
+      writer.write(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    } catch {
+      isClosed = true;
+    }
   };
 
-  // Heartbeat every 30s to keep connection alive
+  const cleanup = () => {
+    if (isClosed) return;
+    isClosed = true;
+    clearInterval(interval);
+    clearTimeout(timeout);
+    try {
+      writer.close();
+    } catch { /* ignore */ }
+  };
+
+  // Heartbeat every 5s to keep QUIC UDP stream active and prevent ERR_QUIC_PROTOCOL_ERROR
   const interval = setInterval(() => {
     send({ type: "heartbeat", query: q, ts: Date.now() });
-  }, 30000);
+  }, 5000);
+
+  // Gracefully close stream after 90s so browser EventSource reconnects cleanly
+  const timeout = setTimeout(() => {
+    cleanup();
+  }, 90000);
 
   // Initial connection message
   send({ type: "connected", query: q, ts: Date.now() });
 
-  c.req.raw.signal.addEventListener("abort", () => {
-    clearInterval(interval);
-    writer.close();
-  });
+  c.req.raw.signal.addEventListener("abort", cleanup);
 
   return new Response(readable, {
     headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
       "Access-Control-Allow-Origin": "*",
     },
   });
 });
+
 
 // ──────────────────────────────────────────────────────────────
 // Healthcheck

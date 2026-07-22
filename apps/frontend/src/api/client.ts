@@ -50,5 +50,8 @@ export function subscribeSSE(
       if (data.type !== "heartbeat") onEvent(data);
     } catch { /* ignore */ }
   };
+  es.onerror = () => {
+    // Graceful silent reconnection on stream cycle
+  };
   return es;
 }
