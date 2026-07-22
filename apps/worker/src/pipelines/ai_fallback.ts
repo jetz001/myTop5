@@ -1,5 +1,6 @@
 import { scrapeWeb } from "../utils/scraper";
 import { Entity, IntentType } from "@top5/shared";
+import { fetchAndCacheImage } from "./image_fetcher";
 
 export async function runAIFallback(
   env: any,
@@ -149,6 +150,23 @@ Return ONLY a valid JSON array of exactly 8 objects. Each object:
     // 6. Save to D1 Database synchronously so entities exist before user votes
     try {
       await saveToDatabase(env.TOP5_DB, newEntities);
+
+      // 7. Fetch & cache Wikipedia thumbnails in background (non-blocking)
+      //    This runs after we return results so it doesn't slow down the response
+      for (const entity of newEntities) {
+        fetchAndCacheImage(env, entity.entity_id, entity.entity_name, entity.entity_name_en)
+          .then((imageUrl) => {
+            if (imageUrl && imageUrl !== entity.image_url) {
+              // Update DB with real image URL
+              env.TOP5_DB
+                .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
+                .bind(imageUrl, entity.entity_id)
+                .run()
+                .catch(() => {});
+            }
+          })
+          .catch(() => {}); // ignore errors — placeholder still works
+      }
     } catch (dbErr) {
       console.error("Failed to save AI entities:", dbErr);
     }

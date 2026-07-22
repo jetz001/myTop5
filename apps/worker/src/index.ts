@@ -10,13 +10,15 @@ import { rankEntities, checkChallengerSwap } from "./ranking";
 import { buildCacheKey, getCached, setCache } from "./cache";
 import { logQuery, recordVote, getTrending, searchEntitiesFTS } from "./db/queries";
 import { fetchGeoEntities } from "./pipelines/geo";
-import { fetchWeb3Entities } from "./pipelines/web3";
 import { fetchDevEntities } from "./pipelines/dev";
 import { fetchPopcultureEntities } from "./pipelines/popculture";
 import { fetchAcademicEntities } from "./pipelines/academic";
 import { isSocialBot, rewriteOgMeta } from "./og";
 import { runAIFallback } from "./pipelines/ai_fallback";
 import { runCronSeeder } from "./pipelines/cron_seeder";
+import { fetchAndSaveAnimeEntities } from "./pipelines/jikan";
+import { fetchAndSaveCryptoEntities } from "./pipelines/web3";
+import { serveImage } from "./pipelines/image_fetcher";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -70,35 +72,53 @@ app.get("/api/search", async (c) => {
     hasBeenSearchedBefore = !!prevSearch;
   }
 
-  // Fallback logic:
-  // - GEO queries: always call AI (location context matters - "ผัดไทกทม" ≠ "ผัดไทนนทบุรี")
-  // - Queries searched before: trust FTS results, no AI needed
-  // - New queries with < 5 FTS results: call AI to populate DB
+  // ── API-first, AI-last logic ────────────────────────────────
+  // Detect specific sub-intents to route to free structured APIs
+  const qLower = q.toLowerCase();
+  const isAnimeQuery = intent === "popculture" && (
+    /anime|manga|อนิเมะ|การ์ตูน|มังงะ|หนังการ์ตูน|season|arc|ซีซัน/.test(qLower)
+  );
+  const isCryptoQuery = intent === "web3" || (
+    /crypto|coin|token|bitcoin|ethereum|btc|eth|defi|nft|คริปโต|เหรียญ/.test(qLower)
+  );
+
+  // Fallback decision
   const shouldFallback = isGeo || (!hasBeenSearchedBefore && (rawEntities.length === 0 || (rawEntities.length < 5 && intent !== "general")));
-  
+
   if (shouldFallback) {
-    const aiEntities = await runAIFallback(c.env, q, intent);
-    
-    // For geo: AI results take priority (they're location-specific)
-    // For others: merge FTS and AI results
-    if (isGeo) {
-      const seen = new Set(aiEntities.map(e => e.entity_id));
-      // Add FTS results that AI didn't cover (to fill any gaps)
-      for (const e of rawEntities) {
-        if (!seen.has(e.entity_id) && aiEntities.length < 8) {
-          aiEntities.push(e);
-          seen.add(e.entity_id);
-        }
-      }
-      rawEntities = aiEntities;
-    } else {
-      const seen = new Set(rawEntities.map(e => e.entity_id));
-      for (const e of aiEntities) {
-        if (!seen.has(e.entity_id)) {
+    let apiEntities: typeof rawEntities = [];
+
+    // 1. Try structured APIs first (fast, free, no AI quota)
+    if (isAnimeQuery) {
+      apiEntities = await fetchAndSaveAnimeEntities(c.env, q);
+    } else if (isCryptoQuery) {
+      apiEntities = await fetchAndSaveCryptoEntities(c.env, q);
+    }
+
+    // 2. Only call AI if structured APIs didn't provide enough results
+    const needsAI = isGeo || (apiEntities.length < 5 && !isAnimeQuery && !isCryptoQuery) || 
+                    (apiEntities.length === 0 && (isAnimeQuery || isCryptoQuery));
+
+    let aiEntities: typeof rawEntities = [];
+    if (needsAI) {
+      aiEntities = await runAIFallback(c.env, q, intent);
+    }
+
+    // Merge: API entities + AI entities + existing FTS
+    const seen = new Set(rawEntities.map(e => e.entity_id));
+    for (const e of [...apiEntities, ...aiEntities]) {
+      if (!seen.has(e.entity_id)) {
+        if (isGeo) {
+          rawEntities.unshift(e); // geo: new results take priority
+        } else {
           rawEntities.push(e);
-          seen.add(e.entity_id);
         }
+        seen.add(e.entity_id);
       }
+    }
+    // For geo: use AI/API results directly
+    if (isGeo && aiEntities.length > 0) {
+      rawEntities = aiEntities;
     }
   }
 
@@ -126,6 +146,14 @@ app.get("/api/search", async (c) => {
   );
 
   return c.json(result);
+});
+
+// ──────────────────────────────────────────────────────────────
+// GET /images/:entityId  — Serve R2 thumbnail (WebP/JPEG)
+// ──────────────────────────────────────────────────────────────
+app.get("/images/:entityId", async (c) => {
+  const entityId = c.req.param("entityId");
+  return serveImage(c.env, entityId);
 });
 
 // ──────────────────────────────────────────────────────────────
