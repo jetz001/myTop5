@@ -43,12 +43,13 @@ app.get("/api/search", async (c) => {
   const intentResult = classifyIntent(q);
   const { intent } = intentResult;
 
-  // 2. Cache check
+  // 2. Cache check (only use cache if it has > 0 items)
   const cacheKey = buildCacheKey(intent, q, lat, lng);
   const cached = await getCached(c.env.CACHE_KV, cacheKey);
-  if (cached) {
+  if (cached && Array.isArray(cached.top5) && cached.top5.length > 0) {
     return c.json({ ...cached, cached: true, latency_ms: Date.now() - start });
   }
+
 
   // 3. Fetch entities from correct pipeline
   const coords =
@@ -291,61 +292,53 @@ app.get("/api/health", (c) =>
 );
 
 app.get("/api/test-ai", async (c) => {
-  const results: Record<string, any> = {};
-
-  // Test Groq API (Primary AI)
   try {
-    const start = Date.now();
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const query = "ดาราหญิงญี่ปุ่น";
+    const intent = "popculture";
+    const prompt = `You are Top5 AI. User searched: "${query}".
+Return ONLY a valid JSON array of 8 REAL, FAMOUS, HUGELY POPULAR specific entities/people for this query. Do NOT invent fake names. Use real celebrities or well-known entities.
+Format MUST be a valid JSON array of 8 objects:
+[
+  {
+    "entity_name": "ชื่อจริงภาษาไทยที่เป็นที่รู้จักอย่างแพร่หลาย",
+    "entity_name_en": "Official exact English Wikipedia title (e.g. Satomi Ishihara, Ayumi Hamasaki)",
+    "description": "ทำไมถึงติดอันดับ และมีความสำคัญอย่างไร (ภาษาไทย max 100 chars)",
+    "category": "${intent}",
+    "w5h": {
+      "who": "ใครเกี่ยวข้อง",
+      "what": "คืออะไร / ผลงานเด่น",
+      "where": "ประเทศ / สถานที่",
+      "when": "ช่วงเวลา / ยุค",
+      "why": "ทำไมถึงติดอันดับ"
+    }
+  }
+]`;
+
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${c.env.GROQ_API_KEY}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: "Hi" }],
-        max_tokens: 10
-      }),
-      signal: AbortSignal.timeout(5000),
+        model: "llama-3.1-8b-instant",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 1200,
+        temperature: 0.7
+      })
     });
-    results.groq = {
-      status: res.status,
-      ok: res.ok,
-      latency_ms: Date.now() - start,
-      error: res.ok ? null : res.statusText
-    };
-  } catch (e: any) {
-    results.groq = { ok: false, error: e.message };
-  }
 
-  // Test Mistral API (Secondary AI)
-  try {
-    const start = Date.now();
-    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${c.env.MISTRAL_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "mistral-large-latest",
-        messages: [{ role: "user", content: "Hi" }],
-        max_tokens: 10
-      }),
-      signal: AbortSignal.timeout(5000),
+    const data: any = await groqRes.json();
+    const responseText = data.choices?.[0]?.message?.content || "";
+
+    return c.json({
+      groq_status: groqRes.status,
+      raw_text: responseText,
+      data
     });
-    results.mistral = {
-      status: res.status,
-      ok: res.ok,
-      latency_ms: Date.now() - start,
-      error: res.ok ? null : res.statusText
-    };
   } catch (e: any) {
-    results.mistral = { ok: false, error: e.message };
+    return c.json({ error: e.message });
   }
-
-  return c.json({ timestamp: new Date().toISOString(), ai_status: results });
 });
 
 
