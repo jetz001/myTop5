@@ -222,21 +222,5 @@ export async function searchEntitiesFTS(
     }
   }
 
-  // 3. If category is specified and we still have < 5, get top category entities from DB
-  if (results.length < 5 && category && category !== "general") {
-    try {
-      const catRes = await db.prepare(
-        `SELECT * FROM entities WHERE category = ? ORDER BY upvotes DESC, global_score DESC LIMIT ?`
-      ).bind(category, limit).all<Entity>();
-      const seen = new Set(results.map(e => e.entity_id));
-      for (const item of (catRes.results ?? [])) {
-        if (!seen.has(item.entity_id)) {
-          results.push(item);
-          seen.add(item.entity_id);
-        }
-      }
-    } catch { /* ignore */ }
-  }
-
   return results;
 }
