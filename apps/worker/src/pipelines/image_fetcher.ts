@@ -136,8 +136,18 @@ export async function serveImage(
   fallbackName?: string,
   ctx?: ExecutionContext
 ): Promise<Response> {
-  const obj = await env.IMAGES.get(`thumbs/${entityId}`);
+  // 1. Try R2 cache first
+  let obj = await env.IMAGES.get(`thumbs/${entityId}`);
 
+  // 2. If missing in R2, fetch & save to R2 on the spot (~300ms) so first load gets the real image!
+  if (!obj && fallbackName) {
+    try {
+      await fetchAndCacheImage(env, entityId, fallbackName, fallbackName);
+      obj = await env.IMAGES.get(`thumbs/${entityId}`);
+    } catch { /* ignore */ }
+  }
+
+  // 3. Serve from R2 if found
   if (obj) {
     const headers = new Headers();
     headers.set("Content-Type", obj.httpMetadata?.contentType ?? "image/jpeg");
@@ -146,13 +156,7 @@ export async function serveImage(
     return new Response(obj.body, { headers });
   }
 
-  // Trigger auto background image fetch to populate R2
-  if (fallbackName && ctx) {
-    const p = fetchAndCacheImage(env, entityId, fallbackName, fallbackName).catch(() => {});
-    ctx.waitUntil(p);
-  }
-
-  // Fallback: 302 redirect with no-cache headers so browser rechecks when R2 gets image
+  // 4. Fallback if no image exists on Wikipedia/web
   const displayName = fallbackName && fallbackName.trim() ? fallbackName.trim() : "Top5";
   const name = encodeURIComponent(displayName);
   const headers = new Headers();
