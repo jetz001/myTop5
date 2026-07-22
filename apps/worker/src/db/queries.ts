@@ -162,7 +162,11 @@ export async function searchEntitiesFTS(
   const terms = cleanQ.split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
   
-  const ftsQuery = terms.map(t => `"${t}"*`).join(" OR ");
+  // Filter out standalone year digits (e.g. "2026") from FTS text matching to prevent false positives
+  const textTerms = terms.filter(t => !/^\d+$/.test(t));
+  const searchTerms = textTerms.length > 0 ? textTerms : terms;
+  const ftsQuery = searchTerms.map(t => `"${t}"*`).join(" AND ");
+
 
   let sql = `
     SELECT e.entity_id, e.entity_name, e.entity_name_en, e.category, e.description,
