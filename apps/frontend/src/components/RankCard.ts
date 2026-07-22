@@ -55,10 +55,16 @@ export function createRankCard(
   card.dataset.entityId = entity.entity_id;
   card.style.animationDelay = `${(rank - 1) * 70}ms`;
 
+  // Resolve image URL — R2 images are served from Worker, not Pages
+  const WORKER_BASE = "https://top5-worker.jimwar02.workers.dev";
+  const resolvedImgUrl = entity.image_url?.startsWith("/images/")
+    ? `${WORKER_BASE}${entity.image_url}`
+    : entity.image_url;
+
   // ── Thumbnail (image OR gradient emoji fallback)
   const thumbHtml = hasImg
     ? `<div class="rank-card-img">
-         <img src="${entity.image_url}" alt="${esc(entity.entity_name)}" loading="lazy"
+         <img src="${resolvedImgUrl}" alt="${esc(entity.entity_name)}" loading="lazy"
               onerror="this.parentElement.innerHTML=this.parentElement.dataset.fallback" />
        </div>`
     : `<div class="rank-card-img rank-card-img--icon"
