@@ -19,19 +19,19 @@ export async function runAIFallback(
       : `Based on your own knowledge,`;
 
     const prompt = `You are Top5 AI. User searched: "${query}".
-Return ONLY a valid JSON array of top 8 real famous items/people. Must be real specific entities.
-Format MUST be JSON array with 8 objects:
+Return ONLY a valid JSON array of 8 REAL, FAMOUS, HUGELY POPULAR specific entities/people for this query. Do NOT invent fake names. Use real celebrities or well-known entities.
+Format MUST be a valid JSON array of 8 objects:
 [
   {
-    "entity_name": "ชื่อจริงภาษาไทยที่เป็นที่รู้จักแพร่หลาย (เช่น ซาโตมิ อิชิฮาระ, อายูมิ ฮามาซากิ)",
-    "entity_name_en": "Official globally recognized English Wikipedia title (e.g. Satomi Ishihara, Masami Nagasawa)",
-    "description": "เหตุผลที่ติด Top 5 (ภาษาไทย max 100 chars)",
+    "entity_name": "ชื่อจริงภาษาไทยที่เป็นที่รู้จักอย่างแพร่หลาย",
+    "entity_name_en": "Official exact English Wikipedia title (e.g. Fann Wong, Zoe Tay, Jeanette Aw, Satomi Ishihara, Bae Suzy)",
+    "description": "ทำไมถึงติดอันดับ และมีความสำคัญอย่างไร (ภาษาไทย max 100 chars)",
     "category": "${categoryHint}",
     "w5h": {
       "who": "ใครเกี่ยวข้อง",
-      "what": "คืออะไร",
-      "where": "ที่ไหน",
-      "when": "เมื่อไหร่",
+      "what": "คืออะไร / ผลงานเด่น",
+      "where": "ประเทศ / สถานที่",
+      "when": "ช่วงเวลา / ยุค",
       "why": "ทำไมถึงติดอันดับ"
     }
   }
@@ -118,18 +118,32 @@ Format MUST be JSON array with 8 objects:
     }
 
     
-    // 4. Parse the JSON (extract array robustly)
-    const arrayStart = responseText.indexOf('[');
-    const arrayEnd = responseText.lastIndexOf(']');
-    
-    if (arrayStart === -1 || arrayEnd === -1) {
-      throw new Error(`No JSON array found in AI response: ${responseText}`);
+    // 4. Parse the JSON (extract array robustly with auto-repair)
+    let parsedData: any[] = [];
+    try {
+      const arrayStart = responseText.indexOf('[');
+      const arrayEnd = responseText.lastIndexOf(']');
+      if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+        let jsonStr = responseText.substring(arrayStart, arrayEnd + 1);
+        // Clean trailing commas before closing brackets/braces (common AI JSON flaw)
+        jsonStr = jsonStr.replace(/,\s*([\]}])/g, "$1");
+        parsedData = JSON.parse(jsonStr);
+      }
+    } catch {
+      // Fallback: extract individual valid JSON objects if array parsing fails
+      const objectRegex = /\{\s*"entity_name"\s*:\s*"([^"]+)"[\s\S]*?\}/g;
+      let match;
+      while ((match = objectRegex.exec(responseText)) !== null) {
+        try {
+          const cleanObjStr = match[0].replace(/,\s*}/g, "}");
+          const obj = JSON.parse(cleanObjStr);
+          if (obj.entity_name) parsedData.push(obj);
+        } catch { /* ignore bad item */ }
+      }
     }
-    
-    const jsonStr = responseText.substring(arrayStart, arrayEnd + 1);
-    const parsedData = JSON.parse(jsonStr);
 
-    if (!Array.isArray(parsedData)) return [];
+    if (!Array.isArray(parsedData) || parsedData.length === 0) return [];
+
 
     // 5. Format to our Entity interface using deterministic entity_id
     const newEntities: Entity[] = parsedData.map((item: any, index: number) => {
