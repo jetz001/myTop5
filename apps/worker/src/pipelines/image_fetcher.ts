@@ -48,7 +48,10 @@ async function fetchWikiSearchThumbnail(query: string): Promise<string | null> {
   for (const lang of ["en", "th"]) {
     try {
       const url = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanQ)}&srlimit=1&format=json&origin=*`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Top5App/1.0 (https://top5-28n.pages.dev)" },
+        signal: AbortSignal.timeout(3000),
+      });
       if (!res.ok) continue;
       const data = (await res.json()) as any;
       const title = data?.query?.search?.[0]?.title;
@@ -60,8 +63,30 @@ async function fetchWikiSearchThumbnail(query: string): Promise<string | null> {
       // ignore
     }
   }
+
+  // Fallback to Wikimedia Commons Media Search
+  try {
+    const commonsUrl = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(cleanQ)}&gsrnamespace=6&prop=imageinfo&iiprop=url&format=json&origin=*`;
+    const res = await fetch(commonsUrl, {
+      headers: { "User-Agent": "Top5App/1.0 (https://top5-28n.pages.dev)" },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      const pages = data?.query?.pages;
+      if (pages) {
+        const firstPage = Object.values(pages)[0] as any;
+        const imgUrl = firstPage?.imageinfo?.[0]?.url;
+        if (imgUrl && /\.(jpg|jpeg|png|webp)/i.test(imgUrl)) {
+          return imgUrl;
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
   return null;
 }
+
 
 /**
  * Fetch a thumbnail for an entity and cache it in R2 under `thumbs/{entityId}`.

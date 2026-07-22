@@ -19,11 +19,12 @@ export async function runAIFallback(
       : `Based on your own knowledge,`;
 
     const prompt = `You are Top5 AI. User searched: "${query}".
-Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 objects:
+Return ONLY a valid JSON array of top 8 real famous items/people. Must be real specific entities.
+Format MUST be JSON array with 8 objects:
 [
   {
-    "entity_name": "ชื่อเฉพาะภาษาไทย (max 35 chars)",
-    "entity_name_en": "Official English Name",
+    "entity_name": "ชื่อจริงภาษาไทยที่เป็นที่รู้จักแพร่หลาย (เช่น ซาโตมิ อิชิฮาระ, อายูมิ ฮามาซากิ)",
+    "entity_name_en": "Official globally recognized English Wikipedia title (e.g. Satomi Ishihara, Masami Nagasawa)",
     "description": "เหตุผลที่ติด Top 5 (ภาษาไทย max 100 chars)",
     "category": "${categoryHint}",
     "w5h": {
