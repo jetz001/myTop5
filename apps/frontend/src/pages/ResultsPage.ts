@@ -181,7 +181,10 @@ function renderResults(
               if (c) animateSwap(c);
             }, 50);
           }
-        } catch { /* silent */ }
+          return { success: vr.success ?? true, new_upvotes: vr.new_upvotes ?? 0 };
+        } catch {
+          return null;
+        }
       });
       rankList.appendChild(card);
     });

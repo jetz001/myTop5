@@ -36,7 +36,7 @@ function scoreClass(score: number): string {
 export function createRankCard(
   entity: RankedEntity,
   query: string,
-  onVote: (entityId: string) => void
+  onVote: (entityId: string) => Promise<{ success: boolean; new_upvotes: number } | null>
 ): HTMLElement {
   const rank    = entity.rank ?? 1;
   const intent  = entity.intent ?? "general";
@@ -121,9 +121,9 @@ export function createRankCard(
   const upvoteBtn = card.querySelector<HTMLButtonElement>(".upvote-btn")!;
   const countEl   = upvoteBtn.querySelector<HTMLElement>(".upvote-count")!;
 
-  upvoteBtn.addEventListener("click", () => {
-    if (upvoteBtn.classList.contains("voted")) return;
-    upvoteBtn.classList.add("voted");
+  upvoteBtn.addEventListener("click", async () => {
+    if (upvoteBtn.classList.contains("voted") || upvoteBtn.classList.contains("voting")) return;
+    upvoteBtn.classList.add("voting");
     const arrow = upvoteBtn.querySelector<HTMLElement>(".upvote-arrow")!;
     arrow.animate([
       { transform: "scale(1) translateY(0)" },
@@ -131,8 +131,28 @@ export function createRankCard(
       { transform: "scale(0.9) translateY(1px)" },
       { transform: "scale(1) translateY(0)" },
     ], { duration: 400, easing: "cubic-bezier(0.34,1.56,0.64,1)" });
-    countEl.textContent = String((entity.upvotes ?? 0) + 1);
-    onVote(entity.entity_id);
+    // Optimistic UI: show +1 immediately
+    countEl.textContent = String((parseInt(countEl.textContent || "0", 10)) + 1);
+    try {
+      const vr = await onVote(entity.entity_id);
+      // Update with real value from server
+      if (vr && typeof vr.new_upvotes === "number") {
+        countEl.textContent = String(vr.new_upvotes);
+      }
+      if (vr && !vr.success) {
+        // Already voted - revert optimistic update
+        countEl.textContent = String(vr.new_upvotes ?? entity.upvotes ?? 0);
+        upvoteBtn.classList.add("voted");
+        upvoteBtn.title = "โหวตแล้วใน 24 ชั่วโมงนี้";
+      } else {
+        upvoteBtn.classList.add("voted");
+      }
+    } catch {
+      // Revert on error
+      countEl.textContent = String(entity.upvotes ?? 0);
+    } finally {
+      upvoteBtn.classList.remove("voting");
+    }
   });
 
   return card;
