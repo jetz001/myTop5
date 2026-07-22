@@ -3,7 +3,7 @@
 //  https://docs.api.jikan.moe/
 // ─────────────────────────────────────────────────────────────
 import type { Entity, IntentType } from "@top5/shared";
-import { saveToDatabase } from "../db/queries";
+import { saveToDatabase } from "./ai_fallback";
 import { fetchAndCacheImage } from "./image_fetcher";
 
 interface JikanAnime {
