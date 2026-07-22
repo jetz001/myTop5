@@ -90,9 +90,9 @@ app.get("/api/search", async (c) => {
 
     // 1. Try structured APIs first (fast, free, no AI quota)
     if (isAnimeQuery) {
-      apiEntities = await fetchAndSaveAnimeEntities(c.env, q);
+      apiEntities = await fetchAndSaveAnimeEntities(c.env, q, c.executionCtx);
     } else if (isCryptoQuery) {
-      apiEntities = await fetchAndSaveCryptoEntities(c.env, q);
+      apiEntities = await fetchAndSaveCryptoEntities(c.env, q, c.executionCtx);
     }
 
     // 2. Only call AI if structured APIs didn't provide enough results
@@ -101,7 +101,7 @@ app.get("/api/search", async (c) => {
 
     let aiEntities: typeof rawEntities = [];
     if (needsAI) {
-      aiEntities = await runAIFallback(c.env, q, intent);
+      aiEntities = await runAIFallback(c.env, q, intent, c.executionCtx);
     }
 
     // Merge: API entities + AI entities + existing FTS
@@ -153,7 +153,8 @@ app.get("/api/search", async (c) => {
 // ──────────────────────────────────────────────────────────────
 app.get("/images/:entityId", async (c) => {
   const entityId = c.req.param("entityId");
-  return serveImage(c.env, entityId);
+  const name = c.req.query("name");
+  return serveImage(c.env, entityId, name);
 });
 
 // ──────────────────────────────────────────────────────────────
@@ -172,6 +173,12 @@ app.post("/api/vote", async (c) => {
   const hash = await hashIdentifier(`${ip}:${entity_id}`);
 
   const voteRecord = await recordVote(c.env.TOP5_DB, entity_id, hash);
+
+  // Invalidate search cache for this query so next search returns updated upvotes immediately
+  if (query) {
+    const cacheKey = buildCacheKey(classifyIntent(query).intent, query);
+    c.executionCtx.waitUntil(c.env.CACHE_KV.delete(cacheKey));
+  }
 
   if (!voteRecord.success) {
     return c.json({ success: false, message: "โหวตแล้วในช่วง 24 ชั่วโมงนี้", new_upvotes: voteRecord.new_upvotes } as VoteResult);

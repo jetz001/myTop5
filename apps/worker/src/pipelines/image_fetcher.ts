@@ -143,7 +143,8 @@ export async function serveImage(
   }
 
   // Fallback: 302 redirect with no-cache headers so browser rechecks when R2 gets image
-  const name = encodeURIComponent(fallbackName || entityId.slice(0, 2).toUpperCase());
+  const displayName = fallbackName && fallbackName.trim() ? fallbackName.trim() : "Top5";
+  const name = encodeURIComponent(displayName);
   const headers = new Headers();
   headers.set("Location", `https://ui-avatars.com/api/?name=${name}&size=200&background=random&color=fff&bold=true`);
   headers.set("Cache-Control", "no-cache, no-store, must-revalidate");

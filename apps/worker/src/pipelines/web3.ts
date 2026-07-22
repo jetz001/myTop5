@@ -65,7 +65,8 @@ async function getCoinMarkets(coinIds: string[]): Promise<Map<string, CoinGeckoC
 /** Search CoinGecko and save results to D1, return entities */
 export async function fetchAndSaveCryptoEntities(
   env: any,
-  query: string
+  query: string,
+  ctx?: ExecutionContext
 ): Promise<Entity[]> {
   const coins = await searchCoinGecko(query);
   if (coins.length === 0) return [];
@@ -117,8 +118,7 @@ export async function fetchAndSaveCryptoEntities(
     // Use CoinGecko's own icon if available (already small PNG/WebP ~50px)
     if (coin.large || coin.thumb) {
       const iconUrl = coin.large || coin.thumb;
-      // Fire-and-forget image fetch
-      fetch(iconUrl!, { signal: AbortSignal.timeout(4000) })
+      const p = fetch(iconUrl!, { signal: AbortSignal.timeout(4000) })
         .then(async (imgRes) => {
           if (!imgRes.ok) return;
           const buffer = await imgRes.arrayBuffer();
@@ -128,24 +128,12 @@ export async function fetchAndSaveCryptoEntities(
               cacheControl: "public, max-age=604800",
             },
           });
-          await env.TOP5_DB
-            .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
-            .bind(`/images/${entityId}`, entityId)
-            .run();
         })
         .catch(() => {});
+      if (ctx) ctx.waitUntil(p);
     } else {
-      fetchAndCacheImage(env, entityId, coin.name, coin.name)
-        .then((imageUrl) => {
-          if (imageUrl) {
-            env.TOP5_DB
-              .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
-              .bind(imageUrl, entityId)
-              .run()
-              .catch(() => {});
-          }
-        })
-        .catch(() => {});
+      const p = fetchAndCacheImage(env, entityId, coin.name, coin.name).catch(() => {});
+      if (ctx) ctx.waitUntil(p);
     }
 
     entities.push(entity);

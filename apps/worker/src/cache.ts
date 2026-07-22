@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { SearchResult } from "@top5/shared";
 
-const CACHE_TTL = 300; // 5 minutes in seconds
+const CACHE_TTL = 30; // 30 seconds TTL for fast cache + quick vote updates
 
 export function buildCacheKey(
   intent: string,

@@ -48,7 +48,8 @@ export async function searchJikanAnime(
 /** Map Jikan anime to Entity format and save to D1 + R2 */
 export async function fetchAndSaveAnimeEntities(
   env: any,
-  query: string
+  query: string,
+  ctx?: ExecutionContext
 ): Promise<Entity[]> {
   const animeList = await searchJikanAnime(query, 8);
   if (animeList.length === 0) return [];
@@ -91,7 +92,7 @@ export async function fetchAndSaveAnimeEntities(
     // Fetch + cache poster into R2 in background (try MAL image first, then Wikipedia)
     const malPoster = anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url;
     if (malPoster) {
-      fetch(malPoster, { signal: AbortSignal.timeout(5000) })
+      const p = fetch(malPoster, { signal: AbortSignal.timeout(5000) })
         .then(async (res) => {
           if (!res.ok) return;
           const buffer = await res.arrayBuffer();
@@ -103,10 +104,13 @@ export async function fetchAndSaveAnimeEntities(
           });
         })
         .catch(() => {
-          fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+          const wikiP = fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+          if (ctx) ctx.waitUntil(wikiP);
         });
+      if (ctx) ctx.waitUntil(p);
     } else {
-      fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+      const wikiP = fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+      if (ctx) ctx.waitUntil(wikiP);
     }
 
     entities.push(entity);

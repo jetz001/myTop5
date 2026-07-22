@@ -2,6 +2,7 @@ import { D1Database } from "@cloudflare/workers-types";
 import { Entity } from "@top5/shared";
 import { saveToDatabase } from "./ai_fallback";
 import { fetchAndCacheImage } from "./image_fetcher";
+import { generateEntityId } from "../utils/slug";
 import { Env } from "../index";
 
 // Categories for random distribution
@@ -107,16 +108,21 @@ export async function runCronSeeder(env: Env) {
 
     if (!Array.isArray(parsed) || parsed.length === 0) return;
 
-    const entities: Entity[] = parsed.map((item, index) => ({
-      entity_id: `ai_${crypto.randomUUID()}`,
-      entity_name: item.entity_name || "Unknown",
-      entity_name_en: item.entity_name_en || null,
-      category: item.category || "general",
-      description: item.description || "",
-      global_score: 50 - index * 5,
-      w5h: item.w5h,
-      image_url: "", // Filled by backfillMissingImages on next cron run
-    }));
+    const entities: Entity[] = parsed.map((item, index) => {
+      const entityName = item.entity_name || "Unknown";
+      const entityNameEn = item.entity_name_en || null;
+      const generatedId = generateEntityId(entityNameEn || entityName);
+      return {
+        entity_id: generatedId,
+        entity_name: entityName,
+        entity_name_en: entityNameEn,
+        category: item.category || "general",
+        description: item.description || "",
+        global_score: 50 - index * 5,
+        w5h: item.w5h,
+        image_url: `/images/${generatedId}`,
+      };
+    });
 
     await saveToDatabase(env.TOP5_DB, entities);
     console.log(`[Cron] Seeded ${entities.length} entities for ${randomKeyword}`);
