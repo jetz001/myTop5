@@ -75,9 +75,9 @@ Return ONLY a valid JSON array of exactly 8 objects. Each object:
           messages: [{ role: "user", content: prompt }],
           max_tokens: 3000,
           temperature: 0.8,
-          // Request more items so challenger pool is never empty
           n: 1
-        })
+        }),
+        signal: AbortSignal.timeout(10000), // 10s max
       });
 
       if (!groqRes.ok) throw new Error(`Groq API Error: ${groqRes.statusText}`);
@@ -100,7 +100,8 @@ Return ONLY a valid JSON array of exactly 8 objects. Each object:
             messages: [{ role: "user", content: prompt }],
             max_tokens: 3000,
             temperature: 0.7
-          })
+          }),
+          signal: AbortSignal.timeout(10000), // 10s max
         });
 
         if (!mistralRes.ok) throw new Error(`Mistral API Error: ${mistralRes.statusText}`);
@@ -173,18 +174,14 @@ Return ONLY a valid JSON array of exactly 8 objects. Each object:
 
   } catch (e: any) {
     console.error("AI Fallback Error:", e);
-    return [{
-      entity_id: `error_${Date.now()}`,
-      entity_name: "AI Error",
-      category: categoryHint,
-      intent: categoryHint,
-      description: e.message || String(e),
-      global_score: 0,
-      community_score: 0,
-      total_score: 0,
-      upvotes: 0,
-      image_url: ""
-    }];
+    // Graceful fallback to top existing entities in D1 so user never sees an error screen
+    try {
+      const fallback = await env.TOP5_DB
+        .prepare(`SELECT * FROM entities ORDER BY upvotes DESC, global_score DESC LIMIT 8`)
+        .all<Entity>();
+      if (fallback.results?.length) return fallback.results;
+    } catch { /* ignore */ }
+    return [];
   }
 }
 
