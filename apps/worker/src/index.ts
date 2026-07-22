@@ -282,11 +282,70 @@ app.get("/api/sse", async (c) => {
 
 
 // ──────────────────────────────────────────────────────────────
-// Healthcheck
+// Healthcheck & AI Diagnostic Endpoint
 // ──────────────────────────────────────────────────────────────
 app.get("/api/health", (c) =>
   c.json({ status: "ok", version: "1.0.0", ts: Date.now() })
 );
+
+app.get("/api/test-ai", async (c) => {
+  const results: Record<string, any> = {};
+
+  // Test Groq API (Primary AI)
+  try {
+    const start = Date.now();
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${c.env.GROQ_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 10
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    results.groq = {
+      status: res.status,
+      ok: res.ok,
+      latency_ms: Date.now() - start,
+      error: res.ok ? null : res.statusText
+    };
+  } catch (e: any) {
+    results.groq = { ok: false, error: e.message };
+  }
+
+  // Test Mistral API (Secondary AI)
+  try {
+    const start = Date.now();
+    const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${c.env.MISTRAL_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "mistral-large-latest",
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 10
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    results.mistral = {
+      status: res.status,
+      ok: res.ok,
+      latency_ms: Date.now() - start,
+      error: res.ok ? null : res.statusText
+    };
+  } catch (e: any) {
+    results.mistral = { ok: false, error: e.message };
+  }
+
+  return c.json({ timestamp: new Date().toISOString(), ai_status: results });
+});
+
 
 // ──────────────────────────────────────────────────────────────
 // Utility: Hash IP for privacy-preserving spam guard
