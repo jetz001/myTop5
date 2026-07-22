@@ -58,7 +58,7 @@ export function createRankCard(
   // Resolve image URL — R2 images are served from Worker, not Pages
   const WORKER_BASE = "https://top5-worker.jimwar02.workers.dev";
   const resolvedImgUrl = entity.image_url?.startsWith("/images/")
-    ? `${WORKER_BASE}${entity.image_url}`
+    ? `${WORKER_BASE}${entity.image_url}?name=${encodeURIComponent(entity.entity_name || "")}`
     : entity.image_url;
 
   // ── Thumbnail (image OR gradient emoji fallback)
