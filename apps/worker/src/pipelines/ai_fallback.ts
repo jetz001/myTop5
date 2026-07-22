@@ -52,7 +52,7 @@ Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 
           temperature: 0.7,
           n: 1
         }),
-        signal: AbortSignal.timeout(6000), // 6s max
+        signal: AbortSignal.timeout(15000), // 15s max
       });
 
       if (!groqRes.ok) throw new Error(`Groq API Error: ${groqRes.statusText}`);
@@ -76,9 +76,8 @@ Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 
             max_tokens: 1200,
             temperature: 0.7
           }),
-          signal: AbortSignal.timeout(6000), // 6s max
+          signal: AbortSignal.timeout(15000), // 15s max
         });
-
 
         if (!mistralRes.ok) throw new Error(`Mistral API Error: ${mistralRes.statusText}`);
         
@@ -150,13 +149,6 @@ Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 
 
   } catch (e: any) {
     console.error("AI Fallback Error:", e);
-    // Graceful fallback to top existing entities in D1 so user never sees an error screen
-    try {
-      const fallback = await env.TOP5_DB
-        .prepare(`SELECT * FROM entities ORDER BY upvotes DESC, global_score DESC LIMIT 8`)
-        .all<Entity>();
-      if (fallback.results?.length) return fallback.results;
-    } catch { /* ignore */ }
     return [];
   }
 }
