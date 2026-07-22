@@ -36,7 +36,7 @@ Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 
   }
 ]`;
 
-    // 3. Try Groq API First (Fast Llama 3.3 70B)
+    // 3. Try Groq API First (Super-fast Llama 3.1 8B Instant - ~0.8s latency)
     let responseText = "";
     try {
       const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -46,54 +46,76 @@ Return ONLY a valid JSON array of top 8 items. Format MUST be JSON array with 8 
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "llama-3.1-8b-instant",
           messages: [{ role: "user", content: prompt }],
           max_tokens: 1200,
           temperature: 0.7,
           n: 1
         }),
-        signal: AbortSignal.timeout(15000), // 15s max
+        signal: AbortSignal.timeout(5000), // 5s max timeout (instant model returns in < 1s)
       });
 
-      if (!groqRes.ok) throw new Error(`Groq API Error: ${groqRes.statusText}`);
+      if (!groqRes.ok) throw new Error(`Groq 8B Error: ${groqRes.statusText}`);
       
       const data: any = await groqRes.json();
       responseText = data.choices?.[0]?.message?.content || "";
     } catch (groqErr) {
-      console.warn("Groq API Failed, falling back to Mistral API:", groqErr);
+      console.warn("Groq 8B Failed, trying Groq 70B fallback:", groqErr);
       
       try {
-        // 3.1 Try Mistral API (Secondary Fallback)
-        const mistralRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        // 3.1 Try Groq 70B Fallback
+        const groq70bRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
+            "Authorization": `Bearer ${env.GROQ_API_KEY}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: "mistral-large-latest",
+            model: "llama-3.3-70b-versatile",
             messages: [{ role: "user", content: prompt }],
             max_tokens: 1200,
             temperature: 0.7
           }),
-          signal: AbortSignal.timeout(15000), // 15s max
+          signal: AbortSignal.timeout(6000), // 6s max
         });
 
-        if (!mistralRes.ok) throw new Error(`Mistral API Error: ${mistralRes.statusText}`);
-        
-        const mistralData: any = await mistralRes.json();
-        responseText = mistralData.choices?.[0]?.message?.content || "";
-      } catch (mistralErr) {
-        console.warn("Mistral API Failed, falling back to Cloudflare AI:", mistralErr);
+        if (!groq70bRes.ok) throw new Error(`Groq 70B Error: ${groq70bRes.statusText}`);
+        const groq70bData: any = await groq70bRes.json();
+        responseText = groq70bData.choices?.[0]?.message?.content || "";
+      } catch (groq70bErr) {
+        console.warn("Groq 70B Failed, falling back to Mistral API:", groq70bErr);
 
-        // 3.2 Fallback to Cloudflare Workers AI (Last Resort)
-        const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
-          prompt,
-          max_tokens: 2048
-        });
-        responseText = aiResponse.response;
+        try {
+          // 3.2 Try Mistral API
+          const mistralRes = await fetch("https://api.mistral.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.MISTRAL_API_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              model: "mistral-large-latest",
+              messages: [{ role: "user", content: prompt }],
+              max_tokens: 1200,
+              temperature: 0.7
+            }),
+            signal: AbortSignal.timeout(6000), // 6s max
+          });
+
+          if (!mistralRes.ok) throw new Error(`Mistral API Error: ${mistralRes.statusText}`);
+          const mistralData: any = await mistralRes.json();
+          responseText = mistralData.choices?.[0]?.message?.content || "";
+        } catch {
+          // 3.3 Last resort: Cloudflare Workers AI
+          const aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8", {
+            prompt,
+            max_tokens: 1200
+          });
+          responseText = aiResponse.response;
+        }
       }
     }
+
     
     // 4. Parse the JSON (extract array robustly)
     const arrayStart = responseText.indexOf('[');
