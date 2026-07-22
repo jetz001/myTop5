@@ -139,13 +139,15 @@ app.get("/api/search", async (c) => {
     did_you_mean: intentResult.did_you_mean,
   };
 
-  // 5. Cache result + log query (non-blocking)
-  c.executionCtx.waitUntil(
-    Promise.all([
-      setCache(c.env.CACHE_KV, cacheKey, result),
-      logQuery(c.env.TOP5_DB, q, intent),
-    ])
-  );
+  // 5. Cache result + log query (only if we have items)
+  if (result.top5.length > 0) {
+    c.executionCtx.waitUntil(
+      Promise.all([
+        setCache(c.env.CACHE_KV, cacheKey, result),
+        logQuery(c.env.TOP5_DB, q, intent, top5[0]?.entity_id),
+      ])
+    );
+  }
 
   return c.json(result);
 });
