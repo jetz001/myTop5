@@ -3,6 +3,47 @@ import { Entity, IntentType } from "@top5/shared";
 import { fetchAndCacheImage } from "./image_fetcher";
 import { generateEntityId } from "../utils/slug";
 
+function parseAIJsonArray(text: string): any[] {
+  if (!text) return [];
+  
+  // 1. Extract substring between first '[' and last ']'
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start !== -1 && end !== -1 && end > start) {
+    let jsonStr = text.substring(start, end + 1);
+    // Clean trailing commas and control characters
+    jsonStr = jsonStr
+      .replace(/,\s*([\]}])/g, "$1")
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+
+    try {
+      const data = JSON.parse(jsonStr);
+      if (Array.isArray(data)) return data;
+    } catch {
+      // Relaxed attempt
+    }
+  }
+
+  // Fallback: extract individual JSON objects using regex
+  const results: any[] = [];
+  const objMatches = text.match(/\{[^{}]*\}/g) || [];
+  for (const rawObj of objMatches) {
+    try {
+      const cleaned = rawObj
+        .replace(/,\s*}/g, "}")
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+      const item = JSON.parse(cleaned);
+      if (item && (item.entity_name || item.name)) {
+        results.push(item);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return results;
+}
+
 export async function runAIFallback(
   env: any,
   query: string,
@@ -119,30 +160,9 @@ Format MUST be a valid JSON array of 8 objects:
 
     
     // 4. Parse the JSON (extract array robustly with auto-repair)
-    let parsedData: any[] = [];
-    try {
-      const arrayStart = responseText.indexOf('[');
-      const arrayEnd = responseText.lastIndexOf(']');
-      if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
-        let jsonStr = responseText.substring(arrayStart, arrayEnd + 1);
-        // Clean trailing commas before closing brackets/braces (common AI JSON flaw)
-        jsonStr = jsonStr.replace(/,\s*([\]}])/g, "$1");
-        parsedData = JSON.parse(jsonStr);
-      }
-    } catch {
-      // Fallback: extract individual valid JSON objects if array parsing fails
-      const objectRegex = /\{\s*"entity_name"\s*:\s*"([^"]+)"[\s\S]*?\}/g;
-      let match;
-      while ((match = objectRegex.exec(responseText)) !== null) {
-        try {
-          const cleanObjStr = match[0].replace(/,\s*}/g, "}");
-          const obj = JSON.parse(cleanObjStr);
-          if (obj.entity_name) parsedData.push(obj);
-        } catch { /* ignore bad item */ }
-      }
-    }
+    const parsedData = parseAIJsonArray(responseText);
+    if (!parsedData || parsedData.length === 0) return [];
 
-    if (!Array.isArray(parsedData) || parsedData.length === 0) return [];
 
 
     // 5. Format to our Entity interface using deterministic entity_id
