@@ -157,15 +157,13 @@ export async function searchEntitiesFTS(
   category?: string,
   limit = 20
 ): Promise<Entity[]> {
-  // สร้าง FTS5 query string รองรับ prefix match เช่น "กะเพรา*"
-  // เปลี่ยนช่องว่างเป็น OR หรือ AND ขึ้นกับความเข้มงวด (เอา OR แบบหลวมๆ)
-  const terms = query.trim().split(/\s+/).filter(Boolean);
+  // 1. Smart term tokenization (split spaces and separate letters from numbers e.g. "อนิเมะ2026" -> ["อนิเมะ", "2026"])
+  const cleanQ = query.trim().replace(/([a-zA-Z\u0E00-\u0E7F]+)(\d+)/g, "$1 $2").replace(/(\d+)([a-zA-Z\u0E00-\u0E7F]+)/g, "$1 $2");
+  const terms = cleanQ.split(/\s+/).filter(Boolean);
   if (terms.length === 0) return [];
   
-  // ใช้ prefix match (*) สำหรับแต่ละคำเพื่อให้เจอง่ายขึ้น
   const ftsQuery = terms.map(t => `"${t}"*`).join(" OR ");
 
-  // Join FTS table กับ entities หลัก
   let sql = `
     SELECT e.entity_id, e.entity_name, e.entity_name_en, e.category, e.description,
            e.image_url, e.external_url, e.latitude, e.longitude, e.address,
@@ -186,6 +184,59 @@ export async function searchEntitiesFTS(
   sql += ` ORDER BY fts_rank ASC, e.global_score DESC LIMIT ?`;
   bindParams.push(limit);
 
-  const result = await db.prepare(sql).bind(...bindParams).all<Entity>();
-  return result.results ?? [];
+  let results: Entity[] = [];
+  try {
+    const res = await db.prepare(sql).bind(...bindParams).all<Entity>();
+    results = res.results ?? [];
+  } catch { /* ignore FTS syntax errors */ }
+
+  // 2. If FTS returned fewer than 5 results, search via SQL LIKE fallback
+  if (results.length < 5) {
+    const primaryTerm = terms[0];
+    if (primaryTerm && primaryTerm.length >= 2) {
+      let likeSql = `
+        SELECT entity_id, entity_name, entity_name_en, category, description,
+               image_url, external_url, latitude, longitude, address,
+               global_score, upvotes, last_voted_at
+        FROM entities
+        WHERE (entity_name LIKE ? OR entity_name_en LIKE ? OR description LIKE ?)
+      `;
+      const likeBind: any[] = [`%${primaryTerm}%`, `%${primaryTerm}%`, `%${primaryTerm}%`];
+      if (category && category !== "general") {
+        likeSql += ` AND category = ?`;
+        likeBind.push(category);
+      }
+      likeSql += ` ORDER BY upvotes DESC, global_score DESC LIMIT ?`;
+      likeBind.push(limit);
+
+      try {
+        const likeRes = await db.prepare(likeSql).bind(...likeBind).all<Entity>();
+        const seen = new Set(results.map(e => e.entity_id));
+        for (const item of (likeRes.results ?? [])) {
+          if (!seen.has(item.entity_id)) {
+            results.push(item);
+            seen.add(item.entity_id);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }
+
+  // 3. If category is specified and we still have < 5, get top category entities from DB
+  if (results.length < 5 && category && category !== "general") {
+    try {
+      const catRes = await db.prepare(
+        `SELECT * FROM entities WHERE category = ? ORDER BY upvotes DESC, global_score DESC LIMIT ?`
+      ).bind(category, limit).all<Entity>();
+      const seen = new Set(results.map(e => e.entity_id));
+      for (const item of (catRes.results ?? [])) {
+        if (!seen.has(item.entity_id)) {
+          results.push(item);
+          seen.add(item.entity_id);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return results;
 }

@@ -82,8 +82,10 @@ app.get("/api/search", async (c) => {
     /crypto|coin|token|bitcoin|ethereum|btc|eth|defi|nft|คริปโต|เหรียญ/.test(qLower)
   );
 
-  // Fallback decision
-  const shouldFallback = isGeo || (!hasBeenSearchedBefore && (rawEntities.length === 0 || (rawEntities.length < 5 && intent !== "general")));
+  // ── DB-first, AI-last rule ─────────────────────────────────
+  // If DB already has >= 5 matching entities, NEVER call AI or external APIs.
+  // AI / external APIs are strictly used as fallback when DB has < 5 items.
+  const shouldFallback = isGeo ? rawEntities.length === 0 : rawEntities.length < 5;
 
   if (shouldFallback) {
     let apiEntities: typeof rawEntities = [];
