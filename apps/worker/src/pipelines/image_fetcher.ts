@@ -1,24 +1,24 @@
 // ─────────────────────────────────────────────────────────────
 //  Image Fetcher Pipeline — Wikipedia → R2 thumbnail cache
 // ─────────────────────────────────────────────────────────────
-//  Flow:
-//    1. Check R2 for existing thumbnail
-//    2. Query Wikipedia REST API for page summary + thumbnail
-//    3. Fetch thumbnail image (200px) from Wikipedia CDN
-//    4. Store in R2 bucket as "thumbs/{entityId}"
-//    5. Return public URL served via Worker /images/:entityId
-// ─────────────────────────────────────────────────────────────
 
-const WIKI_THUMB_SIZE = 200; // px — balances quality vs file size
+const WIKI_THUMB_SIZE = 200; // px
 
 interface WikiSummary {
   thumbnail?: { source: string; width: number; height: number };
   originalimage?: { source: string };
 }
 
-/** Try Wikipedia in lang order, return thumbnail URL or null */
+/** Clean title by stripping Season, Part, Arc, etc. to get core entity name */
+function cleanSearchQuery(q: string): string {
+  return q
+    .replace(/\(Season \d+\)|\(Part \d+\)|Season \d+|Part \d+|Final Season|Egghead Arc|Hashira Training Arc/gi, "")
+    .replace(/ซีซั่น \d+|ภาค \d+|อาร์ค/gi, "")
+    .trim();
+}
+
+/** Query Wikipedia summary API directly for exact page title */
 async function fetchWikiThumbnail(name: string): Promise<string | null> {
-  // Try English first (broader coverage), then Thai
   for (const lang of ["en", "th"]) {
     try {
       const encoded = encodeURIComponent(name.replace(/ /g, "_"));
@@ -31,35 +31,41 @@ async function fetchWikiThumbnail(name: string): Promise<string | null> {
 
       const data = (await res.json()) as WikiSummary;
       if (data.thumbnail?.source) {
-        // Swap out any width parameter to get WIKI_THUMB_SIZE
         return data.thumbnail.source.replace(/\/\d+px-/, `/${WIKI_THUMB_SIZE}px-`);
       }
     } catch {
-      // timeout or network error — try next lang
+      // ignore
     }
   }
   return null;
 }
 
-/** Fetch image URL from Wikipedia Search API when direct title lookup fails */
+/** Search Wikipedia API in en and th for fuzzy query match */
 async function fetchWikiSearchThumbnail(query: string): Promise<string | null> {
-  try {
-    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=1&format=json&origin=*`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as any;
-    const title = data?.query?.search?.[0]?.title;
-    if (!title) return null;
-    return fetchWikiThumbnail(title);
-  } catch {
-    return null;
+  const cleanQ = cleanSearchQuery(query);
+  if (!cleanQ) return null;
+
+  for (const lang of ["en", "th"]) {
+    try {
+      const url = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(cleanQ)}&srlimit=1&format=json&origin=*`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) continue;
+      const data = (await res.json()) as any;
+      const title = data?.query?.search?.[0]?.title;
+      if (!title) continue;
+
+      const thumb = await fetchWikiThumbnail(title);
+      if (thumb) return thumb;
+    } catch {
+      // ignore
+    }
   }
+  return null;
 }
 
 /**
- * Fetch a thumbnail for an entity and cache it in R2.
- * Returns the worker-relative image path: "/images/{entityId}"
- * or null if no image could be found.
+ * Fetch a thumbnail for an entity and cache it in R2 under `thumbs/{entityId}`.
+ * Returns "/images/{entityId}" or null.
  */
 export async function fetchAndCacheImage(
   env: { IMAGES: R2Bucket },
@@ -69,32 +75,37 @@ export async function fetchAndCacheImage(
 ): Promise<string | null> {
   const r2Key = `thumbs/${entityId}`;
 
-  // 1. Already cached in R2?
+  // 1. Already in R2?
   const existing = await env.IMAGES.head(r2Key);
   if (existing) return `/images/${entityId}`;
 
-  // 2. Try Wikipedia thumbnail (English name first, then Thai)
-  const searchNames = [
-    entityNameEn,          // "Demon Slayer"
-    entityName,            // "ดาบพิฆาตอสูร"
-    entityNameEn?.split(":")[0].trim(),  // "Demon Slayer" (strip subtitle)
+  // 2. Build candidate search titles
+  const candidates = [
+    entityNameEn,
+    entityName,
+    entityNameEn ? cleanSearchQuery(entityNameEn) : null,
+    entityName ? cleanSearchQuery(entityName) : null,
   ].filter(Boolean) as string[];
 
   let thumbUrl: string | null = null;
 
-  for (const name of searchNames) {
+  // 3. Try exact Wikipedia page summary lookup first
+  for (const name of candidates) {
     thumbUrl = await fetchWikiThumbnail(name);
     if (thumbUrl) break;
   }
 
-  // 3. Fall back to Wikipedia search if direct title didn't work
+  // 4. Try Wikipedia search API fallback if direct lookup returned 404
   if (!thumbUrl) {
-    thumbUrl = await fetchWikiSearchThumbnail(entityNameEn || entityName);
+    for (const name of candidates) {
+      thumbUrl = await fetchWikiSearchThumbnail(name);
+      if (thumbUrl) break;
+    }
   }
 
   if (!thumbUrl) return null;
 
-  // 4. Download the image
+  // 5. Download image and save to R2
   try {
     const imgRes = await fetch(thumbUrl, { signal: AbortSignal.timeout(6000) });
     if (!imgRes.ok) return null;
@@ -102,7 +113,6 @@ export async function fetchAndCacheImage(
     const buffer = await imgRes.arrayBuffer();
     const contentType = imgRes.headers.get("content-type") || "image/jpeg";
 
-    // 5. Store in R2
     await env.IMAGES.put(r2Key, buffer, {
       httpMetadata: {
         contentType,
@@ -116,7 +126,7 @@ export async function fetchAndCacheImage(
   }
 }
 
-/** Serve an image from R2, with fallback to ui-avatars placeholder */
+/** Serve an image from R2, or 302 redirect (no-store) to ui-avatars */
 export async function serveImage(
   env: { IMAGES: R2Bucket },
   entityId: string,
@@ -132,10 +142,10 @@ export async function serveImage(
     return new Response(obj.body, { headers });
   }
 
-  // Fallback: redirect to ui-avatars
+  // Fallback: 302 redirect with no-cache headers so browser rechecks when R2 gets image
   const name = encodeURIComponent(fallbackName || entityId.slice(0, 2).toUpperCase());
-  return Response.redirect(
-    `https://ui-avatars.com/api/?name=${name}&size=200&background=random&color=fff&bold=true`,
-    302
-  );
+  const headers = new Headers();
+  headers.set("Location", `https://ui-avatars.com/api/?name=${name}&size=200&background=random&color=fff&bold=true`);
+  headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+  return new Response(null, { status: 302, headers });
 }

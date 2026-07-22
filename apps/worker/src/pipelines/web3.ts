@@ -100,6 +100,7 @@ export async function fetchAndSaveCryptoEntities(
       description: `Market Cap Rank #${rank} • ${priceStr} ${changeStr}`.trim(),
       global_score: globalScore,
       upvotes: 0,
+      image_url: `/images/${entityId}`,
       external_url: `https://www.coingecko.com/en/coins/${coin.id}`,
       w5h: JSON.stringify({
         who: `${coin.name} (${coin.symbol?.toUpperCase()})`,

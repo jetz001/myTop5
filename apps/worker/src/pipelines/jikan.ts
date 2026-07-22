@@ -73,7 +73,7 @@ export async function fetchAndSaveAnimeEntities(
         : `อนิเมะจาก MyAnimeList (MAL Score: ${anime.score ?? "N/A"})`,
       global_score: globalScore,
       upvotes: 0,
-      external_url: anime.url ?? `https://myanimelist.net/anime/${anime.mal_id}`,
+      image_url: `/images/${entityId}`,
       w5h: JSON.stringify({
         who: "Toei Animation / Ufotable / สตูดิโอผู้สร้าง",
         what: titleEn,
@@ -85,21 +85,29 @@ export async function fetchAndSaveAnimeEntities(
       }),
     };
 
-    // Save to DB first (fast)
+    // Save to DB
     await saveToDatabase(env.TOP5_DB, [entity]);
 
-    // Fetch + cache image in background (non-blocking)
-    fetchAndCacheImage(env, entityId, titleTh, titleEn)
-      .then((imageUrl) => {
-        if (imageUrl) {
-          env.TOP5_DB
-            .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
-            .bind(imageUrl, entityId)
-            .run()
-            .catch(() => {});
-        }
-      })
-      .catch(() => {});
+    // Fetch + cache poster into R2 in background (try MAL image first, then Wikipedia)
+    const malPoster = anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url;
+    if (malPoster) {
+      fetch(malPoster, { signal: AbortSignal.timeout(5000) })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const buffer = await res.arrayBuffer();
+          await env.IMAGES.put(`thumbs/${entityId}`, buffer, {
+            httpMetadata: {
+              contentType: res.headers.get("content-type") || "image/jpeg",
+              cacheControl: "public, max-age=604800",
+            },
+          });
+        })
+        .catch(() => {
+          fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+        });
+    } else {
+      fetchAndCacheImage(env, entityId, titleTh, titleEn).catch(() => {});
+    }
 
     entities.push(entity);
   }

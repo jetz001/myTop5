@@ -45,7 +45,8 @@ ${contextInstruction} จงสร้างรายการ Top 8 ที่ด
 
 Return ONLY a valid JSON array of exactly 8 objects. Each object:
 {
-  "entity_name": "ชื่อเฉพาะเจาะจง (max 40 chars)",
+  "entity_name": "ชื่อเฉพาะเจาะจง (ภาษาไทย, max 40 chars)",
+  "entity_name_en": "Official English name (e.g. Demon Slayer, Bitcoin, Python)",
   "description": "ทำไมถึงติดอันดับ และดีอย่างไร (ภาษาไทย, max 150 chars)",
   "category": "${categoryHint}",
   "w5h": {
@@ -130,42 +131,34 @@ Return ONLY a valid JSON array of exactly 8 objects. Each object:
     if (!Array.isArray(parsedData)) return [];
 
     // 5. Format to our Entity interface
-    const newEntities: Entity[] = parsedData.map((item: any, index: number) => ({
-      entity_id: `ai_${crypto.randomUUID()}`,
-      entity_name: item.entity_name || "Unknown",
-      category: item.category || categoryHint,
-      intent: item.category || categoryHint,
-      description: item.description || "",
-      global_score: 50 - index * 5, // base score for new AI items
-      community_score: 0,
-      total_score: 50 - index * 5,
-      upvotes: 0,
-      image_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.entity_name || query)}&background=random&color=fff&size=400`, // Dynamic image
-      w5h: item.w5h,
-      extra: {
-        ai_generated: true
-      }
-    }));
+    const newEntities: Entity[] = parsedData.map((item: any, index: number) => {
+      const generatedId = `ai_${crypto.randomUUID()}`;
+      return {
+        entity_id: generatedId,
+        entity_name: item.entity_name || "Unknown",
+        entity_name_en: item.entity_name_en || null,
+        category: item.category || categoryHint,
+        intent: item.category || categoryHint,
+        description: item.description || "",
+        global_score: 50 - index * 5,
+        community_score: 0,
+        total_score: 50 - index * 5,
+        upvotes: 0,
+        image_url: `/images/${generatedId}`, // Points to Worker R2 endpoint directly!
+        w5h: item.w5h,
+        extra: {
+          ai_generated: true
+        }
+      };
+    });
 
-    // 6. Save to D1 Database synchronously so entities exist before user votes
+    // 6. Save to D1 Database
     try {
       await saveToDatabase(env.TOP5_DB, newEntities);
 
-      // 7. Fetch & cache Wikipedia thumbnails in background (non-blocking)
-      //    This runs after we return results so it doesn't slow down the response
+      // 7. Fetch & cache Wikipedia thumbnails into R2 in background (non-blocking)
       for (const entity of newEntities) {
-        fetchAndCacheImage(env, entity.entity_id, entity.entity_name, entity.entity_name_en)
-          .then((imageUrl) => {
-            if (imageUrl && imageUrl !== entity.image_url) {
-              // Update DB with real image URL
-              env.TOP5_DB
-                .prepare("UPDATE entities SET image_url = ? WHERE entity_id = ?")
-                .bind(imageUrl, entity.entity_id)
-                .run()
-                .catch(() => {});
-            }
-          })
-          .catch(() => {}); // ignore errors — placeholder still works
+        fetchAndCacheImage(env, entity.entity_id, entity.entity_name, entity.entity_name_en || undefined).catch(() => {});
       }
     } catch (dbErr) {
       console.error("Failed to save AI entities:", dbErr);
