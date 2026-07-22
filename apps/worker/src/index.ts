@@ -56,12 +56,25 @@ app.get("/api/search", async (c) => {
   const ftsSearchTerms = [q, intentResult.did_you_mean].filter(Boolean).join(" ");
   let rawEntities = await searchEntitiesFTS(c.env.TOP5_DB, ftsSearchTerms, intent === "general" ? undefined : intent);
 
-  // Fallback logic:
-  // - For GEO queries: always call AI because location context matters
-  //   (e.g. "ผัดไทกทม" vs "ผัดไทนนทบุรี" should return different results)
-  // - For other intents: only call AI if FTS doesn't return enough results
+  // Check if this query was ever searched before (exists in query_logs = AI was called already)
   const isGeo = intentResult.intent === "geo";
-  const shouldFallback = isGeo || rawEntities.length === 0 || (rawEntities.length < 5 && intentResult.intent !== "general");
+  
+  let hasBeenSearchedBefore = false;
+  if (!isGeo && rawEntities.length > 0) {
+    // If we already have some FTS results, check if this query was searched before
+    // If yes → skip AI (the entities are already in DB, FTS just returns what matches)
+    const prevSearch = await c.env.TOP5_DB
+      .prepare(`SELECT id FROM query_logs WHERE query = ? LIMIT 1`)
+      .bind(q)
+      .first();
+    hasBeenSearchedBefore = !!prevSearch;
+  }
+
+  // Fallback logic:
+  // - GEO queries: always call AI (location context matters - "ผัดไทกทม" ≠ "ผัดไทนนทบุรี")
+  // - Queries searched before: trust FTS results, no AI needed
+  // - New queries with < 5 FTS results: call AI to populate DB
+  const shouldFallback = isGeo || (!hasBeenSearchedBefore && (rawEntities.length === 0 || (rawEntities.length < 5 && intent !== "general")));
   
   if (shouldFallback) {
     const aiEntities = await runAIFallback(c.env, q, intent);
