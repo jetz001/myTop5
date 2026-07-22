@@ -296,20 +296,20 @@ app.get("/api/test-ai", async (c) => {
     const query = "ดาราหญิงญี่ปุ่น";
     const intent = "popculture";
     const prompt = `You are Top5 AI. User searched: "${query}".
-Return ONLY a valid JSON array of 8 REAL, FAMOUS, HUGELY POPULAR specific entities/people for this query. Do NOT invent fake names. Use real celebrities or well-known entities.
+Return ONLY a valid JSON array of 8 REAL, FAMOUS, HUGELY POPULAR specific entities (people, places, things, brands, etc.) for this query. Do NOT invent fake names. Use real and well-known entities.
 Format MUST be a valid JSON array of 8 objects:
 [
   {
-    "entity_name": "ชื่อจริงภาษาไทยที่เป็นที่รู้จักอย่างแพร่หลาย",
-    "entity_name_en": "Official exact English Wikipedia title (e.g. Satomi Ishihara, Ayumi Hamasaki)",
-    "description": "ทำไมถึงติดอันดับ และมีความสำคัญอย่างไร (ภาษาไทย max 100 chars)",
+    "entity_name": "<ใส่ชื่อภาษาไทยที่เป็นที่รู้จักอย่างแพร่หลาย>",
+    "entity_name_en": "<Official exact English Wikipedia title>",
+    "description": "<ทำไมถึงติดอันดับ และมีความสำคัญอย่างไร (ภาษาไทย max 100 chars)>",
     "category": "${intent}",
     "w5h": {
-      "who": "ใครเกี่ยวข้อง",
-      "what": "คืออะไร / ผลงานเด่น",
-      "where": "ประเทศ / สถานที่",
-      "when": "ช่วงเวลา / ยุค",
-      "why": "ทำไมถึงติดอันดับ"
+      "who": "<ใครเกี่ยวข้อง>",
+      "what": "<คืออะไร / ผลงานเด่น>",
+      "where": "<ประเทศ / สถานที่>",
+      "when": "<ช่วงเวลา / ยุค>",
+      "why": "<ทำไมถึงติดอันดับ>"
     }
   }
 ]`;
