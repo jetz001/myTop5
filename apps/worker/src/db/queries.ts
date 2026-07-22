@@ -192,6 +192,14 @@ export async function searchEntitiesFTS(
   try {
     const res = await db.prepare(sql).bind(...bindParams).all<Entity>();
     results = res.results ?? [];
+    
+    // SQLite FTS5 strips Thai vowels/tones (diacritics) by default. 
+    // This causes "ปืน" (p-ue-n) and "ปุ่น" (p-u-n) to both become "ปน".
+    // We must manually filter out false positives.
+    results = results.filter(e => {
+      const combined = `${e.entity_name} ${e.entity_name_en || ""} ${e.description || ""}`.toLowerCase();
+      return searchTerms.every(t => combined.includes(t.toLowerCase()));
+    });
   } catch { /* ignore FTS syntax errors */ }
 
   // 2. If FTS returned fewer than 5 results, search via SQL LIKE fallback
