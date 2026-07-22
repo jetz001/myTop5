@@ -139,10 +139,14 @@ export async function serveImage(
   // 1. Try R2 cache first
   let obj = await env.IMAGES.get(`thumbs/${entityId}`);
 
-  // 2. If missing in R2, fetch & save to R2 on the spot (~300ms) so first load gets the real image!
+  // 2. If missing in R2, attempt quick fetch (max 2s) so response is never delayed
   if (!obj && fallbackName) {
     try {
-      await fetchAndCacheImage(env, entityId, fallbackName, fallbackName);
+      const p = fetchAndCacheImage(env, entityId, fallbackName, fallbackName);
+      if (ctx) {
+        ctx.waitUntil(p.catch(() => {}));
+      }
+      await Promise.race([p, new Promise(r => setTimeout(r, 2000))]);
       obj = await env.IMAGES.get(`thumbs/${entityId}`);
     } catch { /* ignore */ }
   }
