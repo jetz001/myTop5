@@ -635,7 +635,12 @@ export async function getMatchingSponsors(
       .map((t) => t.trim().toLowerCase())
       .filter(Boolean);
 
-    return tags.some((tag) => cleanKw.includes(tag) || tag.includes(cleanKw));
+    // Exact term or word match (prevents partial substring matches like "ปาก" matching "ปากกา")
+    const words = cleanKw.split(/\s+/).filter(Boolean);
+    return tags.some((tag) => {
+      if (tag === cleanKw) return true;
+      return words.some((w) => w === tag);
+    });
   });
 }
 
