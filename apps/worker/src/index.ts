@@ -184,11 +184,23 @@ app.post("/api/vote", async (c) => {
   if (!entity_id) return c.json({ error: "entity_id required" }, 400);
   if (entity_id.startsWith("error_")) return c.json({ success: false, message: "ไม่สามารถโหวตให้ข้อผิดพลาดได้" } as VoteResult);
 
-  // Spam guard: hash IP + entity_id so 1 IP = 1 vote per entity per 24h
-  // This prevents keyword abuse (voting same entity via different search queries)
-  const ip   = c.req.header("CF-Connecting-IP") ?? c.req.header("x-forwarded-for") ?? "unknown";
-  const hash = await hashIdentifier(`${ip}:${entity_id}`);
+  // Spam guard: 1 User Account (if logged in) or 1 IP (if guest) = 1 permanent vote per entity
+  let userIdentifierKey = "";
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.substring(7);
+    const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+    if (user) {
+      userIdentifierKey = `user:${user.user_id}:${entity_id}`;
+    }
+  }
 
+  if (!userIdentifierKey) {
+    const ip = c.req.header("CF-Connecting-IP") ?? c.req.header("x-forwarded-for") ?? "unknown";
+    userIdentifierKey = `ip:${ip}:${entity_id}`;
+  }
+
+  const hash = await hashIdentifier(userIdentifierKey);
   const voteRecord = await recordVote(c.env.TOP5_DB, entity_id, hash);
 
   // Invalidate search cache for this query so next search returns updated upvotes immediately
