@@ -8,7 +8,7 @@ import type { Env, SearchResult, VoteResult } from "@top5/shared";
 import { classifyIntent } from "./intent";
 import { rankEntities, checkChallengerSwap } from "./ranking";
 import { buildCacheKey, getCached, setCache } from "./cache";
-import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession, createCustomEntity } from "./db/queries";
+import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession, createCustomEntity, logActivity, getActivityLogs, getAllUsers, updateUserRole, getUserEntities, updateCustomEntity, deleteEntityAdmin } from "./db/queries";
 import { generateSalt, hashPassword, verifyPassword, generateToken } from "./auth";
 import { fetchGeoEntities } from "./pipelines/geo";
 import { fetchDevEntities } from "./pipelines/dev";
@@ -276,6 +276,7 @@ app.post("/api/auth/register", async (c) => {
         user_id: user.user_id,
         username: user.username,
         email: user.email,
+        role: user.role,
         created_at: user.created_at,
       },
     });
@@ -315,6 +316,7 @@ app.post("/api/auth/login", async (c) => {
         user_id: user.user_id,
         username: user.username,
         email: user.email,
+        role: user.role,
         created_at: user.created_at,
       },
     });
@@ -342,6 +344,7 @@ app.get("/api/auth/me", async (c) => {
       user_id: user.user_id,
       username: user.username,
       email: user.email,
+      role: user.role,
       created_at: user.created_at,
     },
   });
@@ -395,6 +398,7 @@ app.post("/api/entities/add", async (c) => {
     description: description?.trim(),
     image_url: image_url?.trim(),
     userId: user.user_id,
+    username: user.username,
   });
 
   // Invalidate search cache
@@ -418,6 +422,161 @@ app.post("/api/entities/add", async (c) => {
     challenger_pool,
   });
 });
+
+// GET /api/user/entities — Get entities created by logged in user
+app.get("/api/user/entities", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+
+  const entities = await getUserEntities(c.env.TOP5_DB, user.user_id);
+  return c.json({ success: true, entities });
+});
+
+// PUT /api/entities/update — Update entity details
+app.put("/api/entities/update", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "ต้องเข้าสู่ระบบเพื่อแก้ไขข้อมูล" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user) {
+    return c.json({ success: false, message: "Session หมดอายุ" }, 401);
+  }
+
+  const { entity_id, entity_name, entity_name_en, description, image_url } =
+    await c.req.json<{
+      entity_id?: string;
+      entity_name?: string;
+      entity_name_en?: string;
+      description?: string;
+      image_url?: string;
+    }>();
+
+  if (!entity_id || !entity_name || !entity_name.trim()) {
+    return c.json({ success: false, message: "ข้อมูลไม่ครบถ้วน" }, 400);
+  }
+
+  const updated = await updateCustomEntity(
+    c.env.TOP5_DB,
+    entity_id,
+    user.user_id,
+    user.username,
+    user.role === "admin",
+    {
+      entity_name: entity_name.trim(),
+      entity_name_en: entity_name_en?.trim(),
+      description: description?.trim(),
+      image_url: image_url?.trim(),
+    }
+  );
+
+  if (!updated) {
+    return c.json({ success: false, message: "ไม่พบรายการ หรือคุณไม่มีสิทธิ์แก้ไขรายการนี้" }, 403);
+  }
+
+  return c.json({ success: true, message: "แก้ไขข้อมูลรายการเรียบร้อยแล้ว!" });
+});
+
+// ──────────────────────────────────────────────────────────────
+// ADMIN ENDPOINTS
+// ──────────────────────────────────────────────────────────────
+
+// GET /api/admin/logs — Search & view activity logs
+app.get("/api/admin/logs", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const q = c.req.query("q") ?? "";
+  const logs = await getActivityLogs(c.env.TOP5_DB, q);
+  return c.json({ success: true, logs });
+});
+
+// GET /api/admin/users — Search & view all users
+app.get("/api/admin/users", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const q = c.req.query("q") ?? "";
+  const users = await getAllUsers(c.env.TOP5_DB, q);
+  return c.json({ success: true, users });
+});
+
+// PUT /api/admin/users/role — Toggle user role (admin <-> user)
+app.put("/api/admin/users/role", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const { target_user_id, role } = await c.req.json<{ target_user_id?: string; role?: "user" | "admin" }>();
+  if (!target_user_id || !role || (role !== "user" && role !== "admin")) {
+    return c.json({ success: false, message: "Invalid parameters" }, 400);
+  }
+
+  await updateUserRole(c.env.TOP5_DB, target_user_id, role);
+
+  await logActivity(c.env.TOP5_DB, {
+    userId: user.user_id,
+    username: user.username,
+    action: "UPDATE_ENTITY",
+    details: `แอดมิน ${user.username} สลับบทบาทสมาชิก ${target_user_id} เป็น ${role}`
+  });
+
+  return c.json({ success: true, message: `เปลี่ยนสิทธิ์เป็น ${role} เรียบร้อยแล้ว` });
+});
+
+// DELETE /api/admin/entities — Delete entity
+app.delete("/api/admin/entities", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const { entity_id } = await c.req.json<{ entity_id?: string }>();
+  if (!entity_id) {
+    return c.json({ success: false, message: "entity_id required" }, 400);
+  }
+
+  const deleted = await deleteEntityAdmin(c.env.TOP5_DB, entity_id, user.user_id, user.username);
+  if (!deleted) {
+    return c.json({ success: false, message: "ไม่พบรายการที่ต้องการลบ" }, 404);
+  }
+
+  return c.json({ success: true, message: "ลบรายการเรียบร้อยแล้ว" });
+});
+
 
 
 

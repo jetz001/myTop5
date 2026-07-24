@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 import { getMe, logoutUser } from "../api/client";
 import { showAuthModal } from "./AuthModal";
+import { showUserProfileModal } from "./UserProfileModal";
 import type { UserProfile } from "@top5/shared";
 
 let cachedUser: UserProfile | null = null;
@@ -30,13 +31,39 @@ export async function createUserHeaderWidget(): Promise<HTMLElement> {
         <div class="user-dropdown-menu">
           <div class="user-dropdown-item user-info">
             <span class="user-email-text">${esc(cachedUser.email)}</span>
+            <span class="user-role-text">${cachedUser.role === "admin" ? "👑 Admin" : "👤 สมาชิก"}</span>
           </div>
+          <div class="user-dropdown-divider"></div>
+          <button class="user-dropdown-item profile-link-btn" id="user-profile-btn">
+            👤 โปรไฟล์ของฉัน
+          </button>
+          ${cachedUser.role === "admin" ? `
+            <button class="user-dropdown-item admin-link-btn" id="user-admin-btn">
+              ⚙️ แผงควบคุม Admin
+            </button>
+          ` : ""}
           <div class="user-dropdown-divider"></div>
           <button class="user-dropdown-item logout-btn" id="user-logout-btn">
             🚪 ออกจากระบบ
           </button>
         </div>
       `;
+
+      const profileBtn = userChip.querySelector<HTMLButtonElement>("#user-profile-btn")!;
+      profileBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        userChip.classList.remove("open");
+        if (cachedUser) showUserProfileModal(cachedUser);
+      });
+
+      const adminBtn = userChip.querySelector<HTMLButtonElement>("#user-admin-btn");
+      if (adminBtn) {
+        adminBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          userChip.classList.remove("open");
+          window.location.hash = "#/admin";
+        });
+      }
 
       const logoutBtn = userChip.querySelector<HTMLButtonElement>("#user-logout-btn")!;
       logoutBtn.addEventListener("click", async (e) => {

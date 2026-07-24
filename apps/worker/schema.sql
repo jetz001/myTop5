@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS entities (
     upvotes        INTEGER DEFAULT 0,
     -- Metadata
     w5h            TEXT,                    -- JSON string for Who, What, Where, When, Why
+    -- Creator metadata
+    created_by_user_id  TEXT,
+    created_by_username TEXT,
     -- Timestamps
     created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_voted_at  DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -29,6 +32,7 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE INDEX IF NOT EXISTS idx_entities_category    ON entities(category);
 CREATE INDEX IF NOT EXISTS idx_entities_location    ON entities(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_entities_upvotes     ON entities(upvotes DESC);
+CREATE INDEX IF NOT EXISTS idx_entities_creator     ON entities(created_by_user_id);
 
 -- Vote log for spam prevention (1 vote per IP per entity per 24h)
 CREATE TABLE IF NOT EXISTS vote_logs (
@@ -59,6 +63,7 @@ CREATE TABLE IF NOT EXISTS users (
     email         TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     salt          TEXT NOT NULL,
+    role          TEXT DEFAULT 'user',      -- 'user' or 'admin'
     created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,6 +80,23 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+
+-- Activity Audit Logs table
+CREATE TABLE IF NOT EXISTS activity_logs (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL,
+    username     TEXT NOT NULL,
+    action       TEXT NOT NULL,              -- 'CREATE_ENTITY', 'UPDATE_ENTITY', 'DELETE_ENTITY', 'VOTE'
+    entity_id    TEXT,
+    entity_name  TEXT,
+    details      TEXT,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);
+CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at DESC);
+
 
 
 -- ══════════════════════════════════════════════════════════════

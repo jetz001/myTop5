@@ -4,6 +4,7 @@
 import "./styles/main.css";
 import { renderSearchPage } from "./pages/SearchPage";
 import { renderResultsPage } from "./pages/ResultsPage";
+import { renderAdminPage } from "./pages/AdminPage";
 
 const app = document.getElementById("app")!;
 
@@ -19,6 +20,14 @@ function pushSearchURL(query: string): void {
 }
 
 function navigate(query?: string, coords?: { lat: number; lng: number }): void {
+  if (window.location.hash === "#/admin" || window.location.pathname === "/admin") {
+    renderAdminPage(app, () => {
+      window.location.hash = "";
+      navigate();
+    });
+    return;
+  }
+
   if (!query) {
     pushSearchURL("");
     renderSearchPage(app, (q, c) => navigate(q, c));
@@ -34,8 +43,13 @@ function navigate(query?: string, coords?: { lat: number; lng: number }): void {
   }
 }
 
-// Handle back/forward
+// Handle back/forward & hash changes
 window.addEventListener("popstate", () => {
+  const q = getQueryFromURL();
+  navigate(q || undefined);
+});
+
+window.addEventListener("hashchange", () => {
   const q = getQueryFromURL();
   navigate(q || undefined);
 });
@@ -43,3 +57,4 @@ window.addEventListener("popstate", () => {
 // Initial render
 const initialQuery = getQueryFromURL();
 navigate(initialQuery || undefined);
+

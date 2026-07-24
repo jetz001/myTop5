@@ -32,6 +32,9 @@ export interface Entity {
   };
   extra?: Record<string, string | number | boolean>;
   last_voted_at?: string;
+  created_by_user_id?: string;
+  created_by_username?: string;
+  created_at?: string;
 }
 
 export interface SearchResult {
@@ -119,12 +122,15 @@ export interface Env {
 }
 
 // ─────────────────────────────────────────────
-//  Auth Types
+//  Auth & Admin Types
 // ─────────────────────────────────────────────
+export type UserRole = "user" | "admin";
+
 export interface UserProfile {
   user_id: string;
   username: string;
   email: string;
+  role: UserRole;
   created_at: string;
 }
 
@@ -153,5 +159,25 @@ export interface AddEntityPayload {
   description?: string;
   image_url?: string;
 }
+
+export interface UpdateEntityPayload {
+  entity_id: string;
+  entity_name: string;
+  entity_name_en?: string;
+  description?: string;
+  image_url?: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  user_id: string;
+  username: string;
+  action: "CREATE_ENTITY" | "UPDATE_ENTITY" | "DELETE_ENTITY" | "VOTE";
+  entity_id?: string;
+  entity_name?: string;
+  details?: string;
+  created_at: string;
+}
+
 
 

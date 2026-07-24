@@ -268,7 +268,10 @@ function buildChallengerSection(
     row.className = "challenger-mini";
     row.innerHTML = `
       <span class="challenger-rank">#${e.rank}</span>
-      <span class="challenger-name">${escapeHtml(e.entity_name)}</span>
+      <span class="challenger-name">
+        ${escapeHtml(e.entity_name)}
+        ${e.created_by_username ? `<span class="challenger-creator-badge">👤 @${escapeHtml(e.created_by_username)}</span>` : ""}
+      </span>
       <span class="challenger-score">${e.total_score.toFixed(1)} pts</span>
       <button class="challenger-vote-btn" data-entity-id="${escapeHtml(e.entity_id)}" title="โหวตดันขึ้น Top5">
         <span class="challenger-vote-icon">▲</span>

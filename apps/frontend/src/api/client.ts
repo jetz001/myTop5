@@ -1,4 +1,4 @@
-import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile, AddEntityPayload } from "@top5/shared";
+import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile, AddEntityPayload, UpdateEntityPayload, ActivityLog, Entity } from "@top5/shared";
 
 const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.jimwar02.workers.dev";
 const TOKEN_KEY = "top5_auth_token";
@@ -132,6 +132,69 @@ export async function addCustomEntity(payload: AddEntityPayload): Promise<{
   });
   return res.json();
 }
+
+export async function getUserEntities(): Promise<Entity[]> {
+  const res = await fetch(`${BASE_URL}/api/user/entities`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { success: boolean; entities?: Entity[] };
+  return data.entities ?? [];
+}
+
+export async function updateCustomEntity(payload: UpdateEntityPayload): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  const res = await fetch(`${BASE_URL}/api/entities/update`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function getAdminLogs(search?: string): Promise<ActivityLog[]> {
+  const params = search ? `?q=${encodeURIComponent(search)}` : "";
+  const res = await fetch(`${BASE_URL}/api/admin/logs${params}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { success: boolean; logs?: ActivityLog[] };
+  return data.logs ?? [];
+}
+
+export async function getAdminUsers(search?: string): Promise<UserProfile[]> {
+  const params = search ? `?q=${encodeURIComponent(search)}` : "";
+  const res = await fetch(`${BASE_URL}/api/admin/users${params}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { success: boolean; users?: UserProfile[] };
+  return data.users ?? [];
+}
+
+export async function updateUserRoleAdmin(
+  target_user_id: string,
+  role: "user" | "admin"
+): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE_URL}/api/admin/users/role`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ target_user_id, role }),
+  });
+  return res.json();
+}
+
+export async function deleteEntityAdmin(entity_id: string): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE_URL}/api/admin/entities`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ entity_id }),
+  });
+  return res.json();
+}
+
 
 
 export function subscribeSSE(

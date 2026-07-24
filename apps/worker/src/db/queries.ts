@@ -171,7 +171,7 @@ export async function searchEntitiesFTS(
   let sql = `
     SELECT e.entity_id, e.entity_name, e.entity_name_en, e.category, e.description,
            e.image_url, e.external_url, e.latitude, e.longitude, e.address,
-           e.global_score, e.upvotes, e.last_voted_at,
+           e.global_score, e.upvotes, e.last_voted_at, e.created_by_user_id, e.created_by_username, e.created_at,
            bm25(entities_fts) as fts_rank
     FROM entities_fts fts
     JOIN entities e ON fts.entity_id = e.entity_id
@@ -209,7 +209,7 @@ export async function searchEntitiesFTS(
       let likeSql = `
         SELECT entity_id, entity_name, entity_name_en, category, description,
                image_url, external_url, latitude, longitude, address,
-               global_score, upvotes, last_voted_at
+               global_score, upvotes, last_voted_at, created_by_user_id, created_by_username, created_at
         FROM entities
         WHERE (entity_name LIKE ? OR entity_name_en LIKE ? OR description LIKE ?)
       `;
@@ -247,6 +247,7 @@ export interface DBUser {
   email: string;
   password_hash: string;
   salt: string;
+  role: "user" | "admin";
   created_at: string;
 }
 
@@ -258,16 +259,21 @@ export async function createUser(
   passwordHash: string,
   salt: string
 ): Promise<DBUser> {
+  const userCount = await db
+    .prepare(`SELECT COUNT(*) as count FROM users`)
+    .first<{ count: number }>();
+  const role = (userCount?.count ?? 0) === 0 ? "admin" : "user";
+
   await db
     .prepare(
-      `INSERT INTO users (user_id, username, email, password_hash, salt)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO users (user_id, username, email, password_hash, salt, role)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .bind(userId, username, email, passwordHash, salt)
+    .bind(userId, username, email, passwordHash, salt, role)
     .run();
 
   const created = await db
-    .prepare(`SELECT user_id, username, email, password_hash, salt, created_at FROM users WHERE user_id = ?`)
+    .prepare(`SELECT user_id, username, email, password_hash, salt, role, created_at FROM users WHERE user_id = ?`)
     .bind(userId)
     .first<DBUser>();
 
@@ -281,7 +287,7 @@ export async function findUserByEmailOrUsername(
 ): Promise<DBUser | null> {
   return await db
     .prepare(
-      `SELECT user_id, username, email, password_hash, salt, created_at
+      `SELECT user_id, username, email, password_hash, salt, role, created_at
        FROM users
        WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)`
     )
@@ -311,7 +317,7 @@ export async function getUserBySessionToken(
 ): Promise<DBUser | null> {
   const session = await db
     .prepare(
-      `SELECT u.user_id, u.username, u.email, u.password_hash, u.salt, u.created_at
+      `SELECT u.user_id, u.username, u.email, u.password_hash, u.salt, u.role, u.created_at
        FROM user_sessions s
        JOIN users u ON s.user_id = u.user_id
        WHERE s.token = ? AND s.expires_at > CURRENT_TIMESTAMP`
@@ -341,6 +347,7 @@ export async function createCustomEntity(
     description?: string;
     image_url?: string;
     userId: string;
+    username: string;
   }
 ): Promise<Entity> {
   const entityId = `custom_${crypto.randomUUID()}`;
@@ -349,8 +356,8 @@ export async function createCustomEntity(
 
   await db
     .prepare(
-      `INSERT INTO entities (entity_id, entity_name, entity_name_en, category, description, image_url, global_score, upvotes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO entities (entity_id, entity_name, entity_name_en, category, description, image_url, global_score, upvotes, created_by_user_id, created_by_username)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       entityId,
@@ -360,7 +367,9 @@ export async function createCustomEntity(
       data.description || null,
       data.image_url || null,
       globalScore,
-      initialUpvotes
+      initialUpvotes,
+      data.userId,
+      data.username
     )
     .run();
 
@@ -373,11 +382,21 @@ export async function createCustomEntity(
     .bind(crypto.randomUUID(), entityId, data.userId)
     .run();
 
+  // Audit activity log
+  await logActivity(db, {
+    userId: data.userId,
+    username: data.username,
+    action: "CREATE_ENTITY",
+    entityId,
+    entityName: data.entity_name,
+    details: `เสนอรายการใหม่: "${data.entity_name}" (Category: ${data.category})`
+  });
+
   const created = await db
     .prepare(
       `SELECT entity_id, entity_name, entity_name_en, category, description,
               image_url, external_url, latitude, longitude, address,
-              global_score, upvotes, last_voted_at
+              global_score, upvotes, last_voted_at, created_by_user_id, created_by_username, created_at
        FROM entities WHERE entity_id = ?`
     )
     .bind(entityId)
@@ -386,5 +405,181 @@ export async function createCustomEntity(
   if (!created) throw new Error("Failed to create custom entity");
   return created;
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Audit Activity Log & Admin Queries
+// ─────────────────────────────────────────────────────────────
+
+export async function logActivity(
+  db: D1Database,
+  data: {
+    userId: string;
+    username: string;
+    action: "CREATE_ENTITY" | "UPDATE_ENTITY" | "DELETE_ENTITY" | "VOTE";
+    entityId?: string;
+    entityName?: string;
+    details?: string;
+  }
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO activity_logs (id, user_id, username, action, entity_id, entity_name, details)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      crypto.randomUUID(),
+      data.userId,
+      data.username,
+      data.action,
+      data.entityId || null,
+      data.entityName || null,
+      data.details || null
+    )
+    .run();
+}
+
+export async function getActivityLogs(
+  db: D1Database,
+  search?: string,
+  limit = 100
+): Promise<ActivityLog[]> {
+  let sql = `SELECT id, user_id, username, action, entity_id, entity_name, details, created_at FROM activity_logs`;
+  const params: any[] = [];
+
+  if (search && search.trim()) {
+    sql += ` WHERE username LIKE ? OR entity_name LIKE ? OR action LIKE ? OR details LIKE ?`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term);
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT ?`;
+  params.push(limit);
+
+  const res = await db.prepare(sql).bind(...params).all<ActivityLog>();
+  return res.results ?? [];
+}
+
+export async function getAllUsers(
+  db: D1Database,
+  search?: string,
+  limit = 100
+): Promise<UserProfile[]> {
+  let sql = `SELECT user_id, username, email, role, created_at FROM users`;
+  const params: any[] = [];
+
+  if (search && search.trim()) {
+    sql += ` WHERE username LIKE ? OR email LIKE ?`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term);
+  }
+
+  sql += ` ORDER BY created_at DESC LIMIT ?`;
+  params.push(limit);
+
+  const res = await db.prepare(sql).bind(...params).all<UserProfile>();
+  return res.results ?? [];
+}
+
+export async function updateUserRole(
+  db: D1Database,
+  userId: string,
+  newRole: "user" | "admin"
+): Promise<void> {
+  await db
+    .prepare(`UPDATE users SET role = ? WHERE user_id = ?`)
+    .bind(newRole, userId)
+    .run();
+}
+
+export async function getUserEntities(
+  db: D1Database,
+  userId: string
+): Promise<Entity[]> {
+  const res = await db
+    .prepare(
+      `SELECT entity_id, entity_name, entity_name_en, category, description,
+              image_url, external_url, latitude, longitude, address,
+              global_score, upvotes, last_voted_at, created_by_user_id, created_by_username, created_at
+       FROM entities
+       WHERE created_by_user_id = ?
+       ORDER BY created_at DESC`
+    )
+    .bind(userId)
+    .all<Entity>();
+  return res.results ?? [];
+}
+
+export async function updateCustomEntity(
+  db: D1Database,
+  entityId: string,
+  userId: string,
+  username: string,
+  isAdmin: boolean,
+  data: {
+    entity_name: string;
+    entity_name_en?: string;
+    description?: string;
+    image_url?: string;
+  }
+): Promise<boolean> {
+  let sql = `UPDATE entities SET entity_name = ?, entity_name_en = ?, description = ?, image_url = ? WHERE entity_id = ?`;
+  const params: any[] = [
+    data.entity_name,
+    data.entity_name_en || null,
+    data.description || null,
+    data.image_url || null,
+    entityId
+  ];
+
+  if (!isAdmin) {
+    sql += ` AND created_by_user_id = ?`;
+    params.push(userId);
+  }
+
+  const res = await db.prepare(sql).bind(...params).run();
+  const success = (res.meta.changes ?? 0) > 0;
+
+  if (success) {
+    await logActivity(db, {
+      userId,
+      username,
+      action: "UPDATE_ENTITY",
+      entityId,
+      entityName: data.entity_name,
+      details: `แก้ไขข้อมูลรายการ: "${data.entity_name}"`
+    });
+  }
+
+  return success;
+}
+
+export async function deleteEntityAdmin(
+  db: D1Database,
+  entityId: string,
+  adminUserId: string,
+  adminUsername: string
+): Promise<boolean> {
+  const entity = await db
+    .prepare(`SELECT entity_name FROM entities WHERE entity_id = ?`)
+    .bind(entityId)
+    .first<{ entity_name: string }>();
+
+  if (!entity) return false;
+
+  await db.prepare(`DELETE FROM entities WHERE entity_id = ?`).bind(entityId).run();
+  await db.prepare(`DELETE FROM vote_logs WHERE entity_id = ?`).bind(entityId).run();
+
+  await logActivity(db, {
+    userId: adminUserId,
+    username: adminUsername,
+    action: "DELETE_ENTITY",
+    entityId,
+    entityName: entity.entity_name,
+    details: `ผู้ดูแลระบบลบรายการ "${entity.entity_name}"`
+  });
+
+  return true;
+}
+
 
 

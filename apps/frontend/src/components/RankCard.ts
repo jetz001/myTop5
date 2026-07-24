@@ -110,6 +110,8 @@ export function createRankCard(
         </span>
         ${entity.address
           ? `<span class="address-text">📍 ${esc(entity.address)}</span>` : ""}
+        ${entity.created_by_username
+          ? `<span class="creator-badge">👤 เสนอโดย @${esc(entity.created_by_username)}</span>` : ""}
       </div>
     </div>
 
