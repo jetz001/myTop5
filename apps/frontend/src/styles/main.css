@@ -2088,6 +2088,32 @@ a { color: var(--brand); text-decoration: none; }
   gap: 12px;
 }
 
+.modal-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.auth-cancel-btn {
+  padding: 10px 18px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.auth-cancel-btn:hover {
+  background: #e2e8f0;
+  color: var(--text-primary);
+}
+
 /* ─────────────────────────────────────────────────────────────
    Sponsored Banner Card in Search Results
    ───────────────────────────────────────────────────────────── */

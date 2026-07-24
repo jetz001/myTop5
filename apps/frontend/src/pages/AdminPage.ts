@@ -411,9 +411,12 @@ export async function renderAdminPage(
             </select>
           </div>
 
-          <button type="submit" class="auth-submit-btn">
-            ${isEdit ? "💾 บันทึกการแก้ไข" : "➕ สร้างแคมเปญสปอนเซอร์"}
-          </button>
+          <div class="modal-form-actions">
+            <button type="button" class="auth-cancel-btn" id="sponsor-cancel-btn">ยกเลิก</button>
+            <button type="submit" class="auth-submit-btn">
+              ${isEdit ? "💾 บันทึกการแก้ไข" : "➕ สร้างแคมเปญสปอนเซอร์"}
+            </button>
+          </div>
         </form>
       </div>
     `;
@@ -422,6 +425,7 @@ export async function renderAdminPage(
     setTimeout(() => overlay.classList.add("open"), 10);
 
     const closeBtn = overlay.querySelector<HTMLButtonElement>("#sponsor-close-btn")!;
+    const cancelBtn = overlay.querySelector<HTMLButtonElement>("#sponsor-cancel-btn")!;
     const form = overlay.querySelector<HTMLFormElement>("#sponsor-form")!;
 
     const closeModal = () => {
@@ -430,8 +434,13 @@ export async function renderAdminPage(
     };
 
     closeBtn.addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) closeModal();
+    cancelBtn?.addEventListener("click", closeModal);
+
+    // Prevent Enter key in input fields from submitting form unexpectedly
+    form.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+        e.preventDefault();
+      }
     });
 
     form.addEventListener("submit", async (e) => {
