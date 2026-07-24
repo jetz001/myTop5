@@ -184,13 +184,20 @@ Format MUST be a valid JSON array of 8 objects:
       const entityName = item.entity_name || "Unknown";
       const entityNameEn = item.entity_name_en || null;
       const generatedId = generateEntityId(entityNameEn || entityName);
+
+      let desc = item.description?.substring(0, 200) || "";
+      const fullText = `${entityName} ${entityNameEn || ""} ${desc}`.toLowerCase();
+      if (query && !fullText.includes(query.toLowerCase())) {
+        desc = desc ? `${desc} (${query})` : `(${query})`;
+      }
+
       return {
         entity_id: generatedId,
         entity_name: entityName,
         entity_name_en: entityNameEn,
         category: item.category || categoryHint || "general",
         intent: item.category || categoryHint,
-        description: item.description?.substring(0, 200) || "",
+        description: desc,
         global_score: 95 - index * 5,
         community_score: 0,
         total_score: 95 - index * 5,
@@ -211,6 +218,21 @@ Format MUST be a valid JSON array of 8 objects:
       for (const entity of newEntities) {
         const p = fetchAndCacheImage(env, entity.entity_id, entity.entity_name, entity.entity_name_en || undefined).catch(() => {});
         if (ctx) ctx.waitUntil(p);
+      }
+
+      // 8. Re-query entities from DB to return actual upvotes & timestamps
+      const ids = newEntities.map(e => e.entity_id);
+      if (ids.length > 0) {
+        const placeholders = ids.map(() => '?').join(',');
+        const dbRes = await env.TOP5_DB.prepare(
+          `SELECT entity_id, entity_name, entity_name_en, category, description, image_url, global_score, upvotes, last_voted_at, created_by_user_id, created_by_username, created_at
+           FROM entities WHERE entity_id IN (${placeholders})`
+        ).bind(...ids).all();
+
+        if (dbRes.results && dbRes.results.length > 0) {
+          const dbMap = new Map((dbRes.results as Entity[]).map(e => [e.entity_id, e]));
+          return newEntities.map(e => dbMap.get(e.entity_id) || e);
+        }
       }
     } catch (dbErr) {
       console.error("Failed to save AI entities:", dbErr);
