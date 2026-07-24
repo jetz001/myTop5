@@ -332,3 +332,59 @@ export async function deleteSession(
     .run();
 }
 
+export async function createCustomEntity(
+  db: D1Database,
+  data: {
+    entity_name: string;
+    entity_name_en?: string;
+    category: string;
+    description?: string;
+    image_url?: string;
+    userId: string;
+  }
+): Promise<Entity> {
+  const entityId = `custom_${crypto.randomUUID()}`;
+  const globalScore = 50.0;
+  const initialUpvotes = 1;
+
+  await db
+    .prepare(
+      `INSERT INTO entities (entity_id, entity_name, entity_name_en, category, description, image_url, global_score, upvotes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      entityId,
+      data.entity_name,
+      data.entity_name_en || null,
+      data.category,
+      data.description || null,
+      data.image_url || null,
+      globalScore,
+      initialUpvotes
+    )
+    .run();
+
+  // Record initial vote log from creator
+  await db
+    .prepare(
+      `INSERT INTO vote_logs (id, entity_id, user_identifier)
+       VALUES (?, ?, ?)`
+    )
+    .bind(crypto.randomUUID(), entityId, data.userId)
+    .run();
+
+  const created = await db
+    .prepare(
+      `SELECT entity_id, entity_name, entity_name_en, category, description,
+              image_url, external_url, latitude, longitude, address,
+              global_score, upvotes, last_voted_at
+       FROM entities WHERE entity_id = ?`
+    )
+    .bind(entityId)
+    .first<Entity>();
+
+  if (!created) throw new Error("Failed to create custom entity");
+  return created;
+}
+
+

@@ -1339,3 +1339,69 @@ a { color: var(--brand); text-decoration: none; }
   transform: none;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   ADD CUSTOM ENTITY UI
+══════════════════════════════════════════════════════════════ */
+
+.add-entity-bar {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.add-entity-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--bg-base);
+  border: 1px dashed var(--brand);
+  border-radius: var(--radius-full);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-dark);
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  transition: all var(--t-fast);
+}
+
+.add-entity-btn:hover {
+  background: var(--brand-light);
+  border-style: solid;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.18);
+}
+
+.add-entity-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.add-entity-icon {
+  font-size: 32px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.add-entity-header h3 {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.add-entity-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.add-entity-subtitle strong {
+  color: var(--brand-dark);
+}
+
+.auth-field label .required {
+  color: #ef4444;
+}
+
+

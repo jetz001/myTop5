@@ -146,3 +146,12 @@ export interface AuthResponse {
   user?: UserProfile;
 }
 
+export interface AddEntityPayload {
+  query: string;
+  entity_name: string;
+  entity_name_en?: string;
+  description?: string;
+  image_url?: string;
+}
+
+

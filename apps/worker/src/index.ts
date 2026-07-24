@@ -8,7 +8,7 @@ import type { Env, SearchResult, VoteResult } from "@top5/shared";
 import { classifyIntent } from "./intent";
 import { rankEntities, checkChallengerSwap } from "./ranking";
 import { buildCacheKey, getCached, setCache } from "./cache";
-import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession } from "./db/queries";
+import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession, createCustomEntity } from "./db/queries";
 import { generateSalt, hashPassword, verifyPassword, generateToken } from "./auth";
 import { fetchGeoEntities } from "./pipelines/geo";
 import { fetchDevEntities } from "./pipelines/dev";
@@ -356,6 +356,69 @@ app.post("/api/auth/logout", async (c) => {
   }
   return c.json({ success: true });
 });
+
+// POST /api/entities/add — Propose new candidate entity
+app.post("/api/entities/add", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "ต้องเข้าสู่ระบบเพื่อเสนอรายการใหม่" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user) {
+    return c.json({ success: false, message: "Session หมดอายุ กรุณาเข้าสู่ระบบใหม่" }, 401);
+  }
+
+  const { query, entity_name, entity_name_en, description, image_url } =
+    await c.req.json<{
+      query?: string;
+      entity_name?: string;
+      entity_name_en?: string;
+      description?: string;
+      image_url?: string;
+    }>();
+
+  if (!query || !query.trim()) {
+    return c.json({ success: false, message: "กรุณาระบุหัวข้อการค้นหา" }, 400);
+  }
+  if (!entity_name || !entity_name.trim()) {
+    return c.json({ success: false, message: "กรุณากรอกชื่อรายการ" }, 400);
+  }
+
+  const intentResult = classifyIntent(query);
+  const category = intentResult.intent;
+
+  await createCustomEntity(c.env.TOP5_DB, {
+    entity_name: entity_name.trim(),
+    entity_name_en: entity_name_en?.trim(),
+    category,
+    description: description?.trim(),
+    image_url: image_url?.trim(),
+    userId: user.user_id,
+  });
+
+  // Invalidate search cache
+  const cacheKey = buildCacheKey(category, query);
+  c.executionCtx.waitUntil(c.env.CACHE_KV.delete(cacheKey));
+
+  // Re-fetch and re-rank entities
+  const ftsSearchTerms = [query, intentResult.did_you_mean].filter(Boolean).join(" ");
+  const rawEntities = await searchEntitiesFTS(
+    c.env.TOP5_DB,
+    ftsSearchTerms,
+    category === "general" ? undefined : category
+  );
+
+  const { top5, challenger_pool } = rankEntities(rawEntities);
+
+  return c.json({
+    success: true,
+    message: `เสนอ "${entity_name.trim()}" เข้าสู่รายการเรียบร้อยแล้ว!`,
+    top5,
+    challenger_pool,
+  });
+});
+
 
 
 // ──────────────────────────────────────────────────────────────

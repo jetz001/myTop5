@@ -1,4 +1,4 @@
-import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile } from "@top5/shared";
+import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile, AddEntityPayload } from "@top5/shared";
 
 const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.jimwar02.workers.dev";
 const TOKEN_KEY = "top5_auth_token";
@@ -118,6 +118,21 @@ export async function logoutUser(): Promise<void> {
   }
   setStoredToken(null);
 }
+
+export async function addCustomEntity(payload: AddEntityPayload): Promise<{
+  success: boolean;
+  message?: string;
+  top5?: unknown[];
+  challenger_pool?: unknown[];
+}> {
+  const res = await fetch(`${BASE_URL}/api/entities/add`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 
 export function subscribeSSE(
   query: string,

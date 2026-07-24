@@ -6,6 +6,7 @@ import { search, vote, subscribeSSE } from "../api/client";
 import { createSearchBar } from "../components/SearchBar";
 import { createRankCard, animateSwap } from "../components/RankCard";
 import { createUserHeaderWidget } from "../components/UserHeaderWidget";
+import { showAddEntityModal } from "../components/AddEntityModal";
 
 const INTENT_LABELS: Record<string, string> = {
   geo:        "📍 สถานที่",
@@ -211,6 +212,35 @@ function renderResults(
     if (result.challenger_pool && result.challenger_pool.length > 0) {
       body.appendChild(buildChallengerSection(result.challenger_pool, handleVote));
     }
+
+    // Add Custom Entity Action Bar
+    const addEntityBar = document.createElement("div");
+    addEntityBar.className = "add-entity-bar";
+    addEntityBar.innerHTML = `
+      <button class="add-entity-btn" id="propose-new-entity-btn">
+        <span>➕</span> เสนอตัวเลือกใหม่สำหรับ "${escapeHtml(query)}"
+      </button>
+    `;
+
+    const proposeBtn = addEntityBar.querySelector<HTMLButtonElement>("#propose-new-entity-btn")!;
+    proposeBtn.addEventListener("click", () => {
+      showAddEntityModal(query, (data) => {
+        if (data.top5 && Array.isArray(data.top5)) {
+          renderResults(
+            body,
+            {
+              ...result,
+              top5: data.top5 as RankedEntity[],
+              challenger_pool: (data.challenger_pool as RankedEntity[]) ?? result.challenger_pool
+            },
+            query,
+            onNewSearch
+          );
+        }
+      });
+    });
+
+    body.appendChild(addEntityBar);
   }
 }
 

@@ -2,7 +2,6 @@ name = "top5-worker"
 main = "apps/worker/src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
-pages_build_output_dir = "apps/frontend/dist"
 
 [vars]
 ENVIRONMENT = "development"
