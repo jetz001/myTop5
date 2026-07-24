@@ -37,15 +37,33 @@ export interface Entity {
   created_at?: string;
 }
 
+export interface Sponsor {
+  sponsor_id: string;
+  sponsor_name: string;
+  target_keyword: string;
+  title: string;
+  description?: string;
+  image_url?: string;
+  target_url: string;
+  badge_text: string;
+  status: "active" | "inactive";
+  start_at?: string;
+  end_at?: string;
+  click_count: number;
+  created_at: string;
+}
+
 export interface SearchResult {
   query: string;
   intent: IntentType;
   top5: RankedEntity[];
   challenger_pool: RankedEntity[]; // ranks 6-20
+  sponsors?: Sponsor[];
   cached: boolean;
   latency_ms: number;
   did_you_mean?: string;
 }
+
 
 export interface RankedEntity extends Entity {
   rank: number;

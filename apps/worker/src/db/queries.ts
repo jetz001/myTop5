@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 //  D1 Database Query Helpers
 // ─────────────────────────────────────────────────────────────
-import type { Entity, BoundingBox, Env } from "@top5/shared";
+import type { Entity, BoundingBox, Env, Sponsor } from "@top5/shared";
 
 /** ดึง entities ตาม category (ทุก intent ยกเว้น geo) */
 export async function getEntitiesByCategory(
@@ -580,6 +580,167 @@ export async function deleteEntityAdmin(
 
   return true;
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Sponsor Module DB Queries
+// ─────────────────────────────────────────────────────────────
+
+export async function getMatchingSponsors(
+  db: D1Database,
+  keyword: string
+): Promise<Sponsor[]> {
+  const cleanKw = keyword.trim().toLowerCase();
+  const res = await db
+    .prepare(
+      `SELECT sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at, click_count, created_at
+       FROM sponsors
+       WHERE status = 'active'
+         AND (LOWER(target_keyword) = LOWER(?) OR target_keyword = '*' OR LOWER(?) LIKE '%' || LOWER(target_keyword) || '%' OR LOWER(target_keyword) LIKE '%' || LOWER(?) || '%')
+         AND (start_at IS NULL OR datetime(start_at) <= datetime('now'))
+         AND (end_at IS NULL OR datetime(end_at) >= datetime('now'))
+       ORDER BY created_at DESC`
+    )
+    .bind(cleanKw, cleanKw, cleanKw)
+    .all<Sponsor>();
+
+  return res.results ?? [];
+}
+
+export async function getAllSponsorsAdmin(
+  db: D1Database,
+  search?: string
+): Promise<Sponsor[]> {
+  let sql = `SELECT sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at, click_count, created_at FROM sponsors`;
+  const params: any[] = [];
+
+  if (search && search.trim()) {
+    sql += ` WHERE sponsor_name LIKE ? OR target_keyword LIKE ? OR title LIKE ?`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term);
+  }
+
+  sql += ` ORDER BY created_at DESC`;
+
+  const res = await db.prepare(sql).bind(...params).all<Sponsor>();
+  return res.results ?? [];
+}
+
+export async function createSponsorAdmin(
+  db: D1Database,
+  data: {
+    sponsor_name: string;
+    target_keyword: string;
+    title: string;
+    description?: string;
+    image_url?: string;
+    target_url: string;
+    badge_text?: string;
+    status?: "active" | "inactive";
+    start_at?: string;
+    end_at?: string;
+  }
+): Promise<Sponsor> {
+  const sponsorId = `sp_${crypto.randomUUID()}`;
+  await db
+    .prepare(
+      `INSERT INTO sponsors (sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      sponsorId,
+      data.sponsor_name,
+      data.target_keyword,
+      data.title,
+      data.description || null,
+      data.image_url || null,
+      data.target_url,
+      data.badge_text || "⭐ สปอนเซอร์",
+      data.status || "active",
+      data.start_at || null,
+      data.end_at || null
+    )
+    .run();
+
+  const created = await db
+    .prepare(`SELECT sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at, click_count, created_at FROM sponsors WHERE sponsor_id = ?`)
+    .bind(sponsorId)
+    .first<Sponsor>();
+
+  if (!created) throw new Error("Failed to create sponsor");
+  return created;
+}
+
+export async function updateSponsorAdmin(
+  db: D1Database,
+  sponsorId: string,
+  data: {
+    sponsor_name?: string;
+    target_keyword?: string;
+    title?: string;
+    description?: string;
+    image_url?: string;
+    target_url?: string;
+    badge_text?: string;
+    status?: "active" | "inactive";
+    start_at?: string;
+    end_at?: string;
+  }
+): Promise<boolean> {
+  const res = await db
+    .prepare(
+      `UPDATE sponsors SET
+         sponsor_name = COALESCE(?, sponsor_name),
+         target_keyword = COALESCE(?, target_keyword),
+         title = COALESCE(?, title),
+         description = COALESCE(?, description),
+         image_url = COALESCE(?, image_url),
+         target_url = COALESCE(?, target_url),
+         badge_text = COALESCE(?, badge_text),
+         status = COALESCE(?, status),
+         start_at = ?,
+         end_at = ?
+       WHERE sponsor_id = ?`
+    )
+    .bind(
+      data.sponsor_name || null,
+      data.target_keyword || null,
+      data.title || null,
+      data.description || null,
+      data.image_url || null,
+      data.target_url || null,
+      data.badge_text || null,
+      data.status || null,
+      data.start_at || null,
+      data.end_at || null,
+      sponsorId
+    )
+    .run();
+
+  return (res.meta.changes ?? 0) > 0;
+}
+
+export async function deleteSponsorAdmin(
+  db: D1Database,
+  sponsorId: string
+): Promise<boolean> {
+  const res = await db
+    .prepare(`DELETE FROM sponsors WHERE sponsor_id = ?`)
+    .bind(sponsorId)
+    .run();
+
+  return (res.meta.changes ?? 0) > 0;
+}
+
+export async function recordSponsorClick(
+  db: D1Database,
+  sponsorId: string
+): Promise<void> {
+  await db
+    .prepare(`UPDATE sponsors SET click_count = click_count + 1 WHERE sponsor_id = ?`)
+    .bind(sponsorId)
+    .run();
+}
+
 
 
 

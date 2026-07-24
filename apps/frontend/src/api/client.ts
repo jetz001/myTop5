@@ -1,4 +1,4 @@
-import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile, AddEntityPayload, UpdateEntityPayload, ActivityLog, Entity } from "@top5/shared";
+import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile, AddEntityPayload, UpdateEntityPayload, ActivityLog, Entity, Sponsor } from "@top5/shared";
 
 const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.jimwar02.workers.dev";
 const TOKEN_KEY = "top5_auth_token";
@@ -194,6 +194,54 @@ export async function deleteEntityAdmin(entity_id: string): Promise<{ success: b
   });
   return res.json();
 }
+
+export async function getAdminSponsors(search?: string): Promise<Sponsor[]> {
+  const params = search ? `?q=${encodeURIComponent(search)}` : "";
+  const res = await fetch(`${BASE_URL}/api/admin/sponsors${params}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) return [];
+  const data = (await res.json()) as { success: boolean; sponsors?: Sponsor[] };
+  return data.sponsors ?? [];
+}
+
+export async function createAdminSponsor(payload: Partial<Sponsor>): Promise<{ success: boolean; message?: string; sponsor?: Sponsor }> {
+  const res = await fetch(`${BASE_URL}/api/admin/sponsors`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function updateAdminSponsor(payload: Partial<Sponsor> & { sponsor_id: string }): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE_URL}/api/admin/sponsors/update`, {
+    method: "PUT",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function deleteAdminSponsor(sponsor_id: string): Promise<{ success: boolean; message?: string }> {
+  const res = await fetch(`${BASE_URL}/api/admin/sponsors`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ sponsor_id }),
+  });
+  return res.json();
+}
+
+export async function trackSponsorClick(sponsor_id: string): Promise<void> {
+  try {
+    await fetch(`${BASE_URL}/api/sponsors/click`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sponsor_id }),
+    });
+  } catch { /* ignore */ }
+}
+
 
 
 

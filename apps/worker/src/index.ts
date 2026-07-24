@@ -8,7 +8,7 @@ import type { Env, SearchResult, VoteResult } from "@top5/shared";
 import { classifyIntent } from "./intent";
 import { rankEntities, checkChallengerSwap } from "./ranking";
 import { buildCacheKey, getCached, setCache } from "./cache";
-import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession, createCustomEntity, logActivity, getActivityLogs, getAllUsers, updateUserRole, getUserEntities, updateCustomEntity, deleteEntityAdmin } from "./db/queries";
+import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession, createCustomEntity, logActivity, getActivityLogs, getAllUsers, updateUserRole, getUserEntities, updateCustomEntity, deleteEntityAdmin, getMatchingSponsors, getAllSponsorsAdmin, createSponsorAdmin, updateSponsorAdmin, deleteSponsorAdmin, recordSponsorClick } from "./db/queries";
 import { generateSalt, hashPassword, verifyPassword, generateToken } from "./auth";
 import { fetchGeoEntities } from "./pipelines/geo";
 import { fetchDevEntities } from "./pipelines/dev";
@@ -132,17 +132,21 @@ app.get("/api/search", async (c) => {
     rawEntities.map((e) => ({ ...e, intent } as typeof e & { intent: typeof intent }))
   );
 
+  // 5. Fetch active matching sponsors
+  const sponsors = await getMatchingSponsors(c.env.TOP5_DB, q);
+
   const result: SearchResult = {
     query: q,
     intent,
     top5,
     challenger_pool,
+    sponsors: sponsors.length > 0 ? sponsors : undefined,
     cached: false,
     latency_ms: Date.now() - start,
     did_you_mean: intentResult.did_you_mean,
   };
 
-  // 5. Cache result + log query (only if we have items)
+  // 6. Cache result + log query (only if we have items)
   if (result.top5.length > 0) {
     c.executionCtx.waitUntil(
       Promise.all([
@@ -583,6 +587,162 @@ app.delete("/api/admin/entities", async (c) => {
 
   return c.json({ success: true, message: "ลบรายการเรียบร้อยแล้ว" });
 });
+
+// GET /api/admin/sponsors — Fetch all sponsors
+app.get("/api/admin/sponsors", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const q = c.req.query("q") ?? "";
+  const sponsors = await getAllSponsorsAdmin(c.env.TOP5_DB, q);
+  return c.json({ success: true, sponsors });
+});
+
+// POST /api/admin/sponsors — Create sponsor campaign
+app.post("/api/admin/sponsors", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const body = await c.req.json<{
+    sponsor_name?: string;
+    target_keyword?: string;
+    title?: string;
+    description?: string;
+    image_url?: string;
+    target_url?: string;
+    badge_text?: string;
+    status?: "active" | "inactive";
+    start_at?: string;
+    end_at?: string;
+  }>();
+
+  if (!body.sponsor_name || !body.target_keyword || !body.title || !body.target_url) {
+    return c.json({ success: false, message: "กรุณากรอกข้อมูลสำคัญให้ครบถ้วน" }, 400);
+  }
+
+  const sponsor = await createSponsorAdmin(c.env.TOP5_DB, {
+    sponsor_name: body.sponsor_name.trim(),
+    target_keyword: body.target_keyword.trim(),
+    title: body.title.trim(),
+    description: body.description?.trim(),
+    image_url: body.image_url?.trim(),
+    target_url: body.target_url.trim(),
+    badge_text: body.badge_text?.trim() || "⭐ สปอนเซอร์",
+    status: body.status || "active",
+    start_at: body.start_at || undefined,
+    end_at: body.end_at || undefined,
+  });
+
+  await logActivity(c.env.TOP5_DB, {
+    userId: user.user_id,
+    username: user.username,
+    action: "CREATE_ENTITY",
+    details: `แอดมินสร้างสปอนเซอร์ใหม่: "${sponsor.sponsor_name}" (คีย์เวิร์ด: ${sponsor.target_keyword})`
+  });
+
+  return c.json({ success: true, sponsor, message: "สร้างแคมเปญสปอนเซอร์เรียบร้อยแล้ว!" });
+});
+
+// PUT /api/admin/sponsors/update — Update sponsor campaign
+app.put("/api/admin/sponsors/update", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const { sponsor_id, ...data } = await c.req.json<{
+    sponsor_id?: string;
+    sponsor_name?: string;
+    target_keyword?: string;
+    title?: string;
+    description?: string;
+    image_url?: string;
+    target_url?: string;
+    badge_text?: string;
+    status?: "active" | "inactive";
+    start_at?: string;
+    end_at?: string;
+  }>();
+
+  if (!sponsor_id) {
+    return c.json({ success: false, message: "sponsor_id required" }, 400);
+  }
+
+  const updated = await updateSponsorAdmin(c.env.TOP5_DB, sponsor_id, data);
+  if (!updated) {
+    return c.json({ success: false, message: "ไม่พบแคมเปญสปอนเซอร์ที่ต้องการแก้ไข" }, 404);
+  }
+
+  await logActivity(c.env.TOP5_DB, {
+    userId: user.user_id,
+    username: user.username,
+    action: "UPDATE_ENTITY",
+    details: `แอดมินแก้ไขข้อมูลแคมเปญสปอนเซอร์ ID: ${sponsor_id}`
+  });
+
+  return c.json({ success: true, message: "อัปเดตแคมเปญสปอนเซอร์เรียบร้อยแล้ว!" });
+});
+
+// DELETE /api/admin/sponsors — Delete sponsor campaign
+app.delete("/api/admin/sponsors", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user = await getUserBySessionToken(c.env.TOP5_DB, token);
+  if (!user || user.role !== "admin") {
+    return c.json({ success: false, message: "Access denied. Admin only." }, 403);
+  }
+
+  const { sponsor_id } = await c.req.json<{ sponsor_id?: string }>();
+  if (!sponsor_id) {
+    return c.json({ success: false, message: "sponsor_id required" }, 400);
+  }
+
+  const deleted = await deleteSponsorAdmin(c.env.TOP5_DB, sponsor_id);
+  if (!deleted) {
+    return c.json({ success: false, message: "ไม่พบแคมเปญสปอนเซอร์ที่ต้องการลบ" }, 404);
+  }
+
+  await logActivity(c.env.TOP5_DB, {
+    userId: user.user_id,
+    username: user.username,
+    action: "DELETE_ENTITY",
+    details: `แอดมินลบแคมเปญสปอนเซอร์ ID: ${sponsor_id}`
+  });
+
+  return c.json({ success: true, message: "ลบแคมเปญสปอนเซอร์เรียบร้อยแล้ว" });
+});
+
+// POST /api/sponsors/click — Track click on sponsor ad
+app.post("/api/sponsors/click", async (c) => {
+  const { sponsor_id } = await c.req.json<{ sponsor_id?: string }>();
+  if (sponsor_id) {
+    c.executionCtx.waitUntil(recordSponsorClick(c.env.TOP5_DB, sponsor_id));
+  }
+  return c.json({ success: true });
+});
+
 
 
 

@@ -2,7 +2,7 @@
 //  Results Page — Complete Rewrite with fixed rendering + premium UI
 // ─────────────────────────────────────────────────────────────
 import type { RankedEntity, SearchResult } from "@top5/shared";
-import { search, vote, subscribeSSE } from "../api/client";
+import { search, vote, subscribeSSE, trackSponsorClick } from "../api/client";
 import { createSearchBar } from "../components/SearchBar";
 import { createRankCard, animateSwap } from "../components/RankCard";
 import { createUserHeaderWidget } from "../components/UserHeaderWidget";
@@ -147,6 +147,37 @@ function renderResults(
   }
 
   body.appendChild(meta);
+
+  // Sponsored Banner / Card Section
+  if (result.sponsors && result.sponsors.length > 0) {
+    const sponsorSection = document.createElement("div");
+    sponsorSection.className = "sponsor-section";
+
+    result.sponsors.forEach((sp) => {
+      const card = document.createElement("a");
+      card.className = "sponsor-card";
+      card.href = sp.target_url;
+      card.target = "_blank";
+      card.rel = "noopener noreferrer";
+      card.innerHTML = `
+        <div class="sponsor-badge-label">${escapeHtml(sp.badge_text || "⭐ สปอนเซอร์")}</div>
+        ${sp.image_url ? `<div class="sponsor-img-wrap"><img src="${escapeHtml(sp.image_url)}" class="sponsor-img" alt="${escapeHtml(sp.title)}" /></div>` : ""}
+        <div class="sponsor-content">
+          <h4 class="sponsor-title">${escapeHtml(sp.title)}</h4>
+          ${sp.description ? `<p class="sponsor-desc">${escapeHtml(sp.description)}</p>` : ""}
+          <span class="sponsor-brand">ผู้สนับสนุน: ${escapeHtml(sp.sponsor_name)} ↗</span>
+        </div>
+      `;
+
+      card.addEventListener("click", () => {
+        trackSponsorClick(sp.sponsor_id);
+      });
+
+      sponsorSection.appendChild(card);
+    });
+
+    body.appendChild(sponsorSection);
+  }
 
   // Rank list
   const rankList = document.createElement("div");

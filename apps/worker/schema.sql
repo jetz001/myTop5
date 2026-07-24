@@ -97,6 +97,27 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_user ON activity_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs(action);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at DESC);
 
+-- Sponsors table
+CREATE TABLE IF NOT EXISTS sponsors (
+    sponsor_id     TEXT PRIMARY KEY,
+    sponsor_name   TEXT NOT NULL,            -- e.g. "Parker Thailand Official"
+    target_keyword TEXT NOT NULL,            -- e.g. "ปากกา" or "*"
+    title          TEXT NOT NULL,            -- e.g. "ปากกา Parker ลดพิเศษ 20%"
+    description    TEXT,                     -- e.g. "เครื่องเขียนพรีเมียม สั่งวันนี้ส่งฟรี"
+    image_url      TEXT,                     -- Banner/Logo URL
+    target_url     TEXT NOT NULL,            -- Redirect link
+    badge_text     TEXT DEFAULT '⭐ สปอนเซอร์',
+    status         TEXT DEFAULT 'active',    -- 'active' | 'inactive'
+    start_at       DATETIME,                 -- Optional start constraint
+    end_at         DATETIME,                 -- Optional end constraint
+    click_count    INTEGER DEFAULT 0,
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sponsors_keyword ON sponsors(target_keyword);
+CREATE INDEX IF NOT EXISTS idx_sponsors_status  ON sponsors(status);
+
+
 
 
 -- ══════════════════════════════════════════════════════════════
