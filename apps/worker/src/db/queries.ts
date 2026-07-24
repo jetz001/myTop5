@@ -74,12 +74,11 @@ export async function recordVote(
   entityId: string,
   userIdentifier: string
 ): Promise<{ success: boolean; new_upvotes: number }> {
-  // ตรวจ spam: โหวตซ้ำใน 24h ไม่ได้
+  // ตรวจ spam: 1 IP โหวตได้ 1 ครั้งถาวรต่อรายการ
   const existing = await db
     .prepare(
       `SELECT id FROM vote_logs
-       WHERE entity_id = ? AND user_identifier = ?
-         AND voted_at > datetime('now', '-24 hours')`
+       WHERE entity_id = ? AND user_identifier = ?`
     )
     .bind(entityId, userIdentifier)
     .first();

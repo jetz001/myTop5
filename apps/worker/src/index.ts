@@ -198,7 +198,7 @@ app.post("/api/vote", async (c) => {
   }
 
   if (!voteRecord.success) {
-    return c.json({ success: false, message: "โหวตแล้วในช่วง 24 ชั่วโมงนี้", new_upvotes: voteRecord.new_upvotes } as VoteResult);
+    return c.json({ success: false, message: "คุณเคยโหวตรายการนี้ไปแล้ว", new_upvotes: voteRecord.new_upvotes } as VoteResult);
   }
 
   // Re-rank after vote and check challenger swap
