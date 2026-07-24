@@ -585,6 +585,16 @@ export async function deleteEntityAdmin(
 //  Sponsor Module DB Queries
 // ─────────────────────────────────────────────────────────────
 
+function parseDateWithTimezone(dateStr: string): number {
+  if (!dateStr) return NaN;
+  let normalized = dateStr.trim();
+  // If ISO string lacks timezone offset (e.g. "2026-07-24T16:28"), assume Thailand +07:00
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$/.test(normalized)) {
+    normalized = normalized.replace(" ", "T") + "+07:00";
+  }
+  return new Date(normalized).getTime();
+}
+
 export async function getMatchingSponsors(
   db: D1Database,
   keyword: string
@@ -607,13 +617,13 @@ export async function getMatchingSponsors(
   return allActive.filter((sp) => {
     if (!sp.target_keyword) return false;
 
-    // Check Start / End date range in JS (timezone-safe)
+    // Check Start / End date range with Thailand timezone fallback (+07:00)
     if (sp.start_at) {
-      const startTime = new Date(sp.start_at).getTime();
+      const startTime = parseDateWithTimezone(sp.start_at);
       if (!isNaN(startTime) && startTime > now) return false;
     }
     if (sp.end_at) {
-      const endTime = new Date(sp.end_at).getTime();
+      const endTime = parseDateWithTimezone(sp.end_at);
       if (!isNaN(endTime) && endTime < now) return false;
     }
 
