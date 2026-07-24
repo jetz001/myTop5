@@ -117,3 +117,32 @@ export interface Env {
   ENVIRONMENT: string;
   AI: any;
 }
+
+// ─────────────────────────────────────────────
+//  Auth Types
+// ─────────────────────────────────────────────
+export interface UserProfile {
+  user_id: string;
+  username: string;
+  email: string;
+  created_at: string;
+}
+
+export interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+}
+
+export interface LoginPayload {
+  email_or_username: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  success: boolean;
+  message?: string;
+  token?: string;
+  user?: UserProfile;
+}
+

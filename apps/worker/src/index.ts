@@ -8,7 +8,8 @@ import type { Env, SearchResult, VoteResult } from "@top5/shared";
 import { classifyIntent } from "./intent";
 import { rankEntities, checkChallengerSwap } from "./ranking";
 import { buildCacheKey, getCached, setCache } from "./cache";
-import { logQuery, recordVote, getTrending, searchEntitiesFTS } from "./db/queries";
+import { logQuery, recordVote, getTrending, searchEntitiesFTS, createUser, findUserByEmailOrUsername, createSession, getUserBySessionToken, deleteSession } from "./db/queries";
+import { generateSalt, hashPassword, verifyPassword, generateToken } from "./auth";
 import { fetchGeoEntities } from "./pipelines/geo";
 import { fetchDevEntities } from "./pipelines/dev";
 import { fetchPopcultureEntities } from "./pipelines/popculture";
@@ -227,6 +228,135 @@ app.get("/api/trending", async (c) => {
   const trending = await getTrending(c.env.TOP5_DB, 12);
   return c.json({ trending });
 });
+
+// ──────────────────────────────────────────────────────────────
+// AUTH ENDPOINTS
+// ──────────────────────────────────────────────────────────────
+
+// POST /api/auth/register
+app.post("/api/auth/register", async (c) => {
+  try {
+    const { username, email, password } = await c.req.json<{ username?: string; email?: string; password?: string }>();
+    if (!username || !username.trim() || username.length < 3) {
+      return c.json({ success: false, message: "ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร" }, 400);
+    }
+    if (!email || !email.includes("@")) {
+      return c.json({ success: false, message: "อีเมลไม่ถูกต้อง" }, 400);
+    }
+    if (!password || password.length < 6) {
+      return c.json({ success: false, message: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" }, 400);
+    }
+
+    const cleanUsername = username.trim();
+    const cleanEmail    = email.trim().toLowerCase();
+
+    // Check existing
+    const existing = await findUserByEmailOrUsername(c.env.TOP5_DB, cleanEmail);
+    if (existing) {
+      if (existing.email.toLowerCase() === cleanEmail) {
+        return c.json({ success: false, message: "อีเมลนี้ถูกใช้งานแล้ว" }, 400);
+      }
+      if (existing.username.toLowerCase() === cleanUsername.toLowerCase()) {
+        return c.json({ success: false, message: "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว" }, 400);
+      }
+    }
+
+    const userId = `user_${crypto.randomUUID()}`;
+    const salt   = await generateSalt();
+    const hash   = await hashPassword(password, salt);
+
+    const user = await createUser(c.env.TOP5_DB, userId, cleanUsername, cleanEmail, hash, salt);
+    const token = generateToken();
+    await createSession(c.env.TOP5_DB, token, user.user_id);
+
+    return c.json({
+      success: true,
+      token,
+      user: {
+        user_id: user.user_id,
+        username: user.username,
+        email: user.email,
+        created_at: user.created_at,
+      },
+    });
+  } catch (err: any) {
+    if (err?.message?.includes("UNIQUE constraint failed")) {
+      return c.json({ success: false, message: "ชื่อผู้ใช้หรืออีเมลนี้ถูกใช้งานแล้ว" }, 400);
+    }
+    return c.json({ success: false, message: "เกิดข้อผิดพลาดในการสมัครสมาชิก" }, 500);
+  }
+});
+
+// POST /api/auth/login
+app.post("/api/auth/login", async (c) => {
+  try {
+    const { email_or_username, password } = await c.req.json<{ email_or_username?: string; password?: string }>();
+    if (!email_or_username || !password) {
+      return c.json({ success: false, message: "กรุณากรอกชื่อผู้ใช้/อีเมล และรหัสผ่าน" }, 400);
+    }
+
+    const user = await findUserByEmailOrUsername(c.env.TOP5_DB, email_or_username.trim());
+    if (!user) {
+      return c.json({ success: false, message: "ไม่พบบัญชีผู้ใช้งานนี้" }, 400);
+    }
+
+    const valid = await verifyPassword(password, user.salt, user.password_hash);
+    if (!valid) {
+      return c.json({ success: false, message: "รหัสผ่านไม่ถูกต้อง" }, 400);
+    }
+
+    const token = generateToken();
+    await createSession(c.env.TOP5_DB, token, user.user_id);
+
+    return c.json({
+      success: true,
+      token,
+      user: {
+        user_id: user.user_id,
+        username: user.username,
+        email: user.email,
+        created_at: user.created_at,
+      },
+    });
+  } catch {
+    return c.json({ success: false, message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ" }, 500);
+  }
+});
+
+// GET /api/auth/me
+app.get("/api/auth/me", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return c.json({ success: false, message: "Unauthenticated" }, 401);
+  }
+  const token = authHeader.substring(7);
+  const user  = await getUserBySessionToken(c.env.TOP5_DB, token);
+
+  if (!user) {
+    return c.json({ success: false, message: "Session expired or invalid" }, 401);
+  }
+
+  return c.json({
+    success: true,
+    user: {
+      user_id: user.user_id,
+      username: user.username,
+      email: user.email,
+      created_at: user.created_at,
+    },
+  });
+});
+
+// POST /api/auth/logout
+app.post("/api/auth/logout", async (c) => {
+  const authHeader = c.req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.substring(7);
+    await deleteSession(c.env.TOP5_DB, token);
+  }
+  return c.json({ success: true });
+});
+
 
 // ──────────────────────────────────────────────────────────────
 // GET /api/sse?q=กะเพรา — Server-Sent Events for live rank updates

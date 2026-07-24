@@ -1,9 +1,28 @@
-// ─────────────────────────────────────────────────────────────
-//  API Client — Typed fetch wrapper for Top5 Worker API
-// ─────────────────────────────────────────────────────────────
-import type { SearchResult, VoteResult, TrendingQuery } from "@top5/shared";
+import type { SearchResult, VoteResult, TrendingQuery, AuthResponse, RegisterPayload, LoginPayload, UserProfile } from "@top5/shared";
 
 const BASE_URL = import.meta.env.DEV ? "" : "https://top5-worker.jimwar02.workers.dev";
+const TOKEN_KEY = "top5_auth_token";
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setStoredToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getStoredToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 export async function search(
   query: string,
@@ -22,10 +41,10 @@ export async function search(
 export async function vote(
   entityId: string,
   query: string
-): Promise<VoteResult & { top5?: unknown[] }> {
+): Promise<VoteResult & { top5?: unknown[]; challenger_pool?: unknown[] }> {
   const res = await fetch(`${BASE_URL}/api/vote`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ entity_id: entityId, query }),
   });
   if (!res.ok) throw new Error(`Vote failed: ${res.status}`);
@@ -37,6 +56,67 @@ export async function getTrending(): Promise<TrendingQuery[]> {
   if (!res.ok) return [];
   const data = await res.json() as { trending: TrendingQuery[] };
   return data.trending ?? [];
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH API
+// ─────────────────────────────────────────────────────────────
+
+export async function registerUser(payload: RegisterPayload): Promise<AuthResponse> {
+  const res = await fetch(`${BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as AuthResponse;
+  if (data.success && data.token) {
+    setStoredToken(data.token);
+  }
+  return data;
+}
+
+export async function loginUser(payload: LoginPayload): Promise<AuthResponse> {
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as AuthResponse;
+  if (data.success && data.token) {
+    setStoredToken(data.token);
+  }
+  return data;
+}
+
+export async function getMe(): Promise<UserProfile | null> {
+  const token = getStoredToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/me`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      setStoredToken(null);
+      return null;
+    }
+    const data = (await res.json()) as { success: boolean; user?: UserProfile };
+    return data.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutUser(): Promise<void> {
+  const token = getStoredToken();
+  if (token) {
+    try {
+      await fetch(`${BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+    } catch { /* ignore */ }
+  }
+  setStoredToken(null);
 }
 
 export function subscribeSSE(
@@ -55,3 +135,4 @@ export function subscribeSSE(
   };
   return es;
 }
+

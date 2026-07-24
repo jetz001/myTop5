@@ -4,6 +4,7 @@
 import { getTrending } from "../api/client";
 import { createSearchBar } from "../components/SearchBar";
 import { createTrendingGrid } from "../components/TrendingGrid";
+import { createUserHeaderWidget } from "../components/UserHeaderWidget";
 import type { TrendingQuery } from "@top5/shared";
 
 const CATEGORY_DEMOS = [
@@ -14,14 +15,21 @@ const CATEGORY_DEMOS = [
   { label: "🔭 วิทยาศาสตร์", query: "หลุมดำ",   cls: "academic"   },
 ];
 
-export function renderSearchPage(
+export async function renderSearchPage(
   container: HTMLElement,
   onSearch: (query: string, coords?: { lat: number; lng: number }) => void
-): void {
+): Promise<void> {
   container.innerHTML = "";
 
   const page = document.createElement("div");
   page.className = "search-home";
+
+  // ── Top Bar ───────────────────────────────────────────────
+  const topBar = document.createElement("div");
+  topBar.className = "search-home-topbar";
+  const userWidget = await createUserHeaderWidget();
+  topBar.appendChild(userWidget);
+  page.appendChild(topBar);
 
   // ── Logo ──────────────────────────────────────────────────
   const logoWrap = document.createElement("div");

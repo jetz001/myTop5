@@ -52,6 +52,31 @@ CREATE TABLE IF NOT EXISTS query_logs (
 
 CREATE INDEX IF NOT EXISTS idx_query_logs_query  ON query_logs(query, searched_at);
 
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    user_id       TEXT PRIMARY KEY,
+    username      TEXT UNIQUE NOT NULL,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt          TEXT NOT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email    ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- User Sessions table
+CREATE TABLE IF NOT EXISTS user_sessions (
+    token         TEXT PRIMARY KEY,
+    user_id       TEXT NOT NULL,
+    expires_at    DATETIME NOT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+
+
 -- ══════════════════════════════════════════════════════════════
 --  FTS5 Full-Text Search
 -- ══════════════════════════════════════════════════════════════

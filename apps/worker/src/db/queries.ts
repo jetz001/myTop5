@@ -236,3 +236,99 @@ export async function searchEntitiesFTS(
 
   return results;
 }
+
+// ─────────────────────────────────────────────────────────────
+//  User & Session DB Helpers
+// ─────────────────────────────────────────────────────────────
+
+export interface DBUser {
+  user_id: string;
+  username: string;
+  email: string;
+  password_hash: string;
+  salt: string;
+  created_at: string;
+}
+
+export async function createUser(
+  db: D1Database,
+  userId: string,
+  username: string,
+  email: string,
+  passwordHash: string,
+  salt: string
+): Promise<DBUser> {
+  await db
+    .prepare(
+      `INSERT INTO users (user_id, username, email, password_hash, salt)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .bind(userId, username, email, passwordHash, salt)
+    .run();
+
+  const created = await db
+    .prepare(`SELECT user_id, username, email, password_hash, salt, created_at FROM users WHERE user_id = ?`)
+    .bind(userId)
+    .first<DBUser>();
+
+  if (!created) throw new Error("Failed to create user");
+  return created;
+}
+
+export async function findUserByEmailOrUsername(
+  db: D1Database,
+  identifier: string
+): Promise<DBUser | null> {
+  return await db
+    .prepare(
+      `SELECT user_id, username, email, password_hash, salt, created_at
+       FROM users
+       WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)`
+    )
+    .bind(identifier, identifier)
+    .first<DBUser>();
+}
+
+export async function createSession(
+  db: D1Database,
+  token: string,
+  userId: string,
+  expiresInDays = 30
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+  await db
+    .prepare(
+      `INSERT INTO user_sessions (token, user_id, expires_at)
+       VALUES (?, ?, ?)`
+    )
+    .bind(token, userId, expiresAt)
+    .run();
+}
+
+export async function getUserBySessionToken(
+  db: D1Database,
+  token: string
+): Promise<DBUser | null> {
+  const session = await db
+    .prepare(
+      `SELECT u.user_id, u.username, u.email, u.password_hash, u.salt, u.created_at
+       FROM user_sessions s
+       JOIN users u ON s.user_id = u.user_id
+       WHERE s.token = ? AND s.expires_at > CURRENT_TIMESTAMP`
+    )
+    .bind(token)
+    .first<DBUser>();
+
+  return session ?? null;
+}
+
+export async function deleteSession(
+  db: D1Database,
+  token: string
+): Promise<void> {
+  await db
+    .prepare(`DELETE FROM user_sessions WHERE token = ?`)
+    .bind(token)
+    .run();
+}
+

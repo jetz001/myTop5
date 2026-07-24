@@ -5,6 +5,7 @@ import type { RankedEntity, SearchResult } from "@top5/shared";
 import { search, vote, subscribeSSE } from "../api/client";
 import { createSearchBar } from "../components/SearchBar";
 import { createRankCard, animateSwap } from "../components/RankCard";
+import { createUserHeaderWidget } from "../components/UserHeaderWidget";
 
 const INTENT_LABELS: Record<string, string> = {
   geo:        "📍 สถานที่",
@@ -48,6 +49,10 @@ export async function renderResultsPage(
 
   headerInner.appendChild(logo);
   headerInner.appendChild(compactBar);
+
+  const userWidget = await createUserHeaderWidget();
+  headerInner.appendChild(userWidget);
+
   header.appendChild(headerInner);
 
   // Body
@@ -164,6 +169,31 @@ function renderResults(
       btn.addEventListener("click", () => onNewSearch(btn.dataset.q!));
     });
   } else {
+    const handleVote = async (entityId: string) => {
+      try {
+        const vr = await vote(entityId, query);
+        if (vr.rank_changed && "top5" in vr && Array.isArray(vr.top5)) {
+          renderResults(
+            body,
+            {
+              ...result,
+              top5: vr.top5 as RankedEntity[],
+              challenger_pool: (vr.challenger_pool as RankedEntity[]) ?? result.challenger_pool
+            },
+            query,
+            onNewSearch
+          );
+          setTimeout(() => {
+            const c = body.querySelector<HTMLElement>(`[data-entity-id="${entityId}"]`);
+            if (c) animateSwap(c);
+          }, 50);
+        }
+        return { success: vr.success ?? true, new_upvotes: vr.new_upvotes ?? 0 };
+      } catch {
+        return null;
+      }
+    };
+
     result.top5.forEach((entity, i) => {
       // Ensure intent is set
       const enriched: RankedEntity = {
@@ -171,35 +201,24 @@ function renderResults(
         intent: entity.intent ?? (result.intent as RankedEntity["intent"]),
         rank: entity.rank ?? i + 1,
       };
-      const card = createRankCard(enriched, query, async (entityId) => {
-        try {
-          const vr = await vote(entityId, query);
-          if (vr.rank_changed && "top5" in vr && Array.isArray(vr.top5)) {
-            renderResults(body, { ...result, top5: vr.top5 as RankedEntity[] }, query, onNewSearch);
-            setTimeout(() => {
-              const c = body.querySelector<HTMLElement>(`[data-entity-id="${entityId}"]`);
-              if (c) animateSwap(c);
-            }, 50);
-          }
-          return { success: vr.success ?? true, new_upvotes: vr.new_upvotes ?? 0 };
-        } catch {
-          return null;
-        }
-      });
+      const card = createRankCard(enriched, query, handleVote);
       rankList.appendChild(card);
     });
-  }
 
-  body.appendChild(rankList);
+    body.appendChild(rankList);
 
-  // Challenger Pool
-  if (result.challenger_pool && result.challenger_pool.length > 0) {
-    body.appendChild(buildChallengerSection(result.challenger_pool));
+    // Challenger Pool
+    if (result.challenger_pool && result.challenger_pool.length > 0) {
+      body.appendChild(buildChallengerSection(result.challenger_pool, handleVote));
+    }
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-function buildChallengerSection(pool: RankedEntity[]): HTMLElement {
+function buildChallengerSection(
+  pool: RankedEntity[],
+  onVote: (entityId: string) => Promise<{ success: boolean; new_upvotes: number } | null>
+): HTMLElement {
   const sec = document.createElement("section");
   sec.className = "challenger-section";
 
@@ -221,7 +240,41 @@ function buildChallengerSection(pool: RankedEntity[]): HTMLElement {
       <span class="challenger-rank">#${e.rank}</span>
       <span class="challenger-name">${escapeHtml(e.entity_name)}</span>
       <span class="challenger-score">${e.total_score.toFixed(1)} pts</span>
+      <button class="challenger-vote-btn" data-entity-id="${escapeHtml(e.entity_id)}" title="โหวตดันขึ้น Top5">
+        <span class="challenger-vote-icon">▲</span>
+        <span class="challenger-vote-count">${e.upvotes ?? 0}</span>
+      </button>
     `;
+
+    const voteBtn = row.querySelector<HTMLButtonElement>(".challenger-vote-btn");
+    const countEl = row.querySelector<HTMLElement>(".challenger-vote-count");
+    if (voteBtn && countEl) {
+      voteBtn.addEventListener("click", async (evt) => {
+        evt.stopPropagation();
+        if (voteBtn.classList.contains("voted") || voteBtn.classList.contains("voting")) return;
+        voteBtn.classList.add("voting");
+        const currentCount = parseInt(countEl.textContent || "0", 10);
+        countEl.textContent = String(currentCount + 1);
+        try {
+          const vr = await onVote(e.entity_id);
+          if (vr && typeof vr.new_upvotes === "number") {
+            countEl.textContent = String(vr.new_upvotes);
+          }
+          if (vr && !vr.success) {
+            countEl.textContent = String(vr.new_upvotes ?? e.upvotes ?? 0);
+            voteBtn.classList.add("voted");
+            voteBtn.title = "โหวตแล้วใน 24 ชั่วโมงนี้";
+          } else {
+            voteBtn.classList.add("voted");
+          }
+        } catch {
+          countEl.textContent = String(e.upvotes ?? 0);
+        } finally {
+          voteBtn.classList.remove("voting");
+        }
+      });
+    }
+
     list.appendChild(row);
   });
 
