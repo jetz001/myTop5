@@ -4,8 +4,8 @@
 import type { Entity, RankedEntity, RankingScore } from "@top5/shared";
 
 const HALF_LIFE_HOURS = 72; // คะแนนโหวตเก่าลดครึ่งทุก 72 ชั่วโมง
-const W_GLOBAL = 0.5;
-const W_COMMUNITY = 0.5;
+const W_GLOBAL = 0.3;       // 30% จากคะแนนภายนอก/สถิติ
+const W_COMMUNITY = 0.7;    // 70% จากโหวตของชุมชนสมาชิก (ให้ผลโหวตมีอิทธิพลหลักในการขึ้นอันดับ 1)
 
 /**
  * คำนวณ Time Decay Factor
@@ -22,15 +22,16 @@ export function calcDecay(lastVotedAt: string | undefined): number {
 
 /**
  * คำนวณ Community Score จาก upvotes
- * Score_Community = min(Upvotes/200 * 100, 100)
+ * แต่ละโหวตให้คะแนนเต็มที่: 1 โหวต = 25 pts, 2 โหวต = 50 pts, 4+ โหวต = 100 pts
  */
 export function calcCommunityScore(upvotes: number): number {
-  return Math.min((upvotes / 200) * 100, 100);
+  if (!upvotes || upvotes <= 0) return 0;
+  return Math.min(upvotes * 25, 100);
 }
 
 /**
  * คำนวณ Total Hybrid Score
- * Score_Total = (Global*0.5 + Community*0.5) * Decay
+ * Score_Total = (Global*0.3 + Community*0.7) * Decay
  */
 export function calcTotalScore(
   globalScore: number,
