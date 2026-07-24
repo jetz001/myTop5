@@ -597,15 +597,26 @@ export async function getMatchingSponsors(
       `SELECT sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at, click_count, created_at
        FROM sponsors
        WHERE status = 'active'
-         AND (start_at IS NULL OR datetime(start_at) <= datetime('now'))
-         AND (end_at IS NULL OR datetime(end_at) >= datetime('now'))
        ORDER BY created_at DESC`
     )
     .all<Sponsor>();
 
   const allActive = res.results ?? [];
+  const now = Date.now();
+
   return allActive.filter((sp) => {
     if (!sp.target_keyword) return false;
+
+    // Check Start / End date range in JS (timezone-safe)
+    if (sp.start_at) {
+      const startTime = new Date(sp.start_at).getTime();
+      if (!isNaN(startTime) && startTime > now) return false;
+    }
+    if (sp.end_at) {
+      const endTime = new Date(sp.end_at).getTime();
+      if (!isNaN(endTime) && endTime < now) return false;
+    }
+
     if (sp.target_keyword.trim() === "*") return true;
 
     // Split up to 5 keywords by comma (supports English ',' and Thai/Unicode commas)

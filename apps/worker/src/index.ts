@@ -48,7 +48,13 @@ app.get("/api/search", async (c) => {
   const cacheKey = buildCacheKey(intent, q, lat, lng);
   const cached = await getCached(c.env.CACHE_KV, cacheKey);
   if (cached && Array.isArray(cached.top5) && cached.top5.length > 0) {
-    return c.json({ ...cached, cached: true, latency_ms: Date.now() - start });
+    const sponsors = await getMatchingSponsors(c.env.TOP5_DB, q);
+    return c.json({
+      ...cached,
+      sponsors: sponsors.length > 0 ? sponsors : undefined,
+      cached: true,
+      latency_ms: Date.now() - start
+    });
   }
 
 
