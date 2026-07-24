@@ -202,8 +202,8 @@ export async function searchEntitiesFTS(
     });
   } catch { /* ignore FTS syntax errors */ }
 
-  // 2. If FTS returned fewer than 5 results, search via SQL LIKE fallback
-  if (results.length < 5) {
+  // 2. Always supplement with SQL LIKE search so items matching in description or created by users are included
+  if (results.length < 30) {
     const primaryTerm = terms[0];
     if (primaryTerm && primaryTerm.length >= 2) {
       let likeSql = `

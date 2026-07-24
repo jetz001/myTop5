@@ -391,11 +391,18 @@ app.post("/api/entities/add", async (c) => {
   const intentResult = classifyIntent(query);
   const category = intentResult.intent;
 
+  const cleanQuery = query.trim();
+  let cleanDesc = description?.trim() || "";
+  const fullText = `${entity_name} ${entity_name_en || ""} ${cleanDesc}`.toLowerCase();
+  if (!fullText.includes(cleanQuery.toLowerCase())) {
+    cleanDesc = cleanDesc ? `${cleanDesc} (${cleanQuery})` : `(${cleanQuery})`;
+  }
+
   await createCustomEntity(c.env.TOP5_DB, {
     entity_name: entity_name.trim(),
     entity_name_en: entity_name_en?.trim(),
     category,
-    description: description?.trim(),
+    description: cleanDesc || undefined,
     image_url: image_url?.trim(),
     userId: user.user_id,
     username: user.username,
