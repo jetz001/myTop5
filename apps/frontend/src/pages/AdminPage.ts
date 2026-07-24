@@ -268,11 +268,15 @@ export async function renderAdminPage(
             </tr>
           </thead>
           <tbody>
-            ${sponsors.map((s) => `
+            ${sponsors.map((s) => {
+              const tags = (s.target_keyword || "").split(/[,，]/).map(t => t.trim()).filter(Boolean);
+              return `
               <tr>
                 <td class="sponsor-name-col">
                   <strong>📢 ${esc(s.sponsor_name)}</strong>
-                  <div class="kw-badge">🔑 Target: "${esc(s.target_keyword)}"</div>
+                  <div class="kw-tags-container">
+                    ${tags.map(t => `<span class="kw-badge">🔑 ${esc(t)}</span>`).join(" ")}
+                  </div>
                 </td>
                 <td class="sponsor-title-col">
                   <div class="sponsor-title-text">${esc(s.title)}</div>
@@ -295,7 +299,7 @@ export async function renderAdminPage(
                   <button class="del-sponsor-btn" data-id="${s.sponsor_id}" data-name="${esc(s.sponsor_name)}">🗑️ ลบ</button>
                 </td>
               </tr>
-            `).join("")}
+            `}).join("")}
           </tbody>
         </table>
       </div>
@@ -357,8 +361,9 @@ export async function renderAdminPage(
           </div>
 
           <div class="auth-field">
-            <label>คีย์เวิร์ดเป้าหมาย (Target Keyword) <span class="required">*</span></label>
-            <input type="text" id="sp-keyword" value="${esc(sponsor?.target_keyword || "")}" placeholder="เช่น ปากกา (หรือใส่ * หากต้องการโชว์ทุกคีย์เวิร์ด)" required />
+            <label>คีย์เวิร์ดเป้าหมาย (Target Keywords - ไม่เกิน 5 คีย์เวิร์ด) <span class="required">*</span></label>
+            <input type="text" id="sp-keyword" value="${esc(sponsor?.target_keyword || "")}" placeholder="เช่น ปากกา, เครื่องเขียน, Parker, ดินสอ (คั่นด้วย , ไม่เกิน 5 คำ หรือใส่ *)" required />
+            <small class="field-hint">ใส่ได้สูงสุด 5 คีย์เวิร์ด คั่นด้วยเครื่องหมายจุลภาค (,) หรือใส่ * เพื่อแสดงผลทุกคำค้นหา</small>
           </div>
 
           <div class="auth-field">
@@ -431,9 +436,17 @@ export async function renderAdminPage(
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      const targetKw = (document.getElementById("sp-keyword") as HTMLInputElement).value.trim();
+      const tags = targetKw.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+
+      if (tags.length > 5) {
+        alert("กรุณากรอกคีย์เวิร์ดเป้าหมายไม่เกิน 5 คำ (คั่นด้วยเครื่องหมาย ,)");
+        return;
+      }
+
       const payload = {
         sponsor_name: (document.getElementById("sp-name") as HTMLInputElement).value.trim(),
-        target_keyword: (document.getElementById("sp-keyword") as HTMLInputElement).value.trim(),
+        target_keyword: targetKw,
         title: (document.getElementById("sp-title") as HTMLInputElement).value.trim(),
         description: (document.getElementById("sp-desc") as HTMLInputElement).value.trim() || undefined,
         target_url: (document.getElementById("sp-target-url") as HTMLInputElement).value.trim(),

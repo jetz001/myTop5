@@ -590,20 +590,32 @@ export async function getMatchingSponsors(
   keyword: string
 ): Promise<Sponsor[]> {
   const cleanKw = keyword.trim().toLowerCase();
+  if (!cleanKw) return [];
+
   const res = await db
     .prepare(
       `SELECT sponsor_id, sponsor_name, target_keyword, title, description, image_url, target_url, badge_text, status, start_at, end_at, click_count, created_at
        FROM sponsors
        WHERE status = 'active'
-         AND (LOWER(target_keyword) = LOWER(?) OR target_keyword = '*' OR LOWER(?) LIKE '%' || LOWER(target_keyword) || '%' OR LOWER(target_keyword) LIKE '%' || LOWER(?) || '%')
          AND (start_at IS NULL OR datetime(start_at) <= datetime('now'))
          AND (end_at IS NULL OR datetime(end_at) >= datetime('now'))
        ORDER BY created_at DESC`
     )
-    .bind(cleanKw, cleanKw, cleanKw)
     .all<Sponsor>();
 
-  return res.results ?? [];
+  const allActive = res.results ?? [];
+  return allActive.filter((sp) => {
+    if (!sp.target_keyword) return false;
+    if (sp.target_keyword.trim() === "*") return true;
+
+    // Split up to 5 keywords by comma (supports English ',' and Thai/Unicode commas)
+    const tags = sp.target_keyword
+      .split(/[,，]/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+
+    return tags.some((tag) => cleanKw.includes(tag) || tag.includes(cleanKw));
+  });
 }
 
 export async function getAllSponsorsAdmin(

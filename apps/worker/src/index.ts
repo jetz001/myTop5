@@ -634,6 +634,11 @@ app.post("/api/admin/sponsors", async (c) => {
     return c.json({ success: false, message: "กรุณากรอกข้อมูลสำคัญให้ครบถ้วน" }, 400);
   }
 
+  const tags = body.target_keyword.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+  if (tags.length > 5) {
+    return c.json({ success: false, message: "รองรับคีย์เวิร์ดเป้าหมายสูงสุดไม่เกิน 5 คีย์เวิร์ด (คั่นด้วยเครื่องหมาย ,)" }, 400);
+  }
+
   const sponsor = await createSponsorAdmin(c.env.TOP5_DB, {
     sponsor_name: body.sponsor_name.trim(),
     target_keyword: body.target_keyword.trim(),
@@ -685,6 +690,13 @@ app.put("/api/admin/sponsors/update", async (c) => {
 
   if (!sponsor_id) {
     return c.json({ success: false, message: "sponsor_id required" }, 400);
+  }
+
+  if (data.target_keyword) {
+    const tags = data.target_keyword.split(/[,，]/).map(t => t.trim()).filter(Boolean);
+    if (tags.length > 5) {
+      return c.json({ success: false, message: "รองรับคีย์เวิร์ดเป้าหมายสูงสุดไม่เกิน 5 คีย์เวิร์ด (คั่นด้วยเครื่องหมาย ,)" }, 400);
+    }
   }
 
   const updated = await updateSponsorAdmin(c.env.TOP5_DB, sponsor_id, data);
